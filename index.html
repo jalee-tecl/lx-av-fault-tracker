@@ -342,17 +342,13 @@
         </div>
       </div>
       <div class="card section-gap" style="max-width:640px;">
-        <h2 style="font-size:16px; margin-bottom:16px;">Staff Password</h2>
-        <div class="login-sub" style="margin-bottom:16px;">Used by the whole department to view and log reports.</div>
-        <div class="field">
-          <label>Admin Password (to confirm it's you)</label>
-          <input type="password" id="cur-pw-staff">
+        <h2 style="font-size:16px;">Staff Passwords</h2>
+        <div class="login-sub" style="margin-bottom:16px;">Anyone entering any of these passwords gets staff access. Add as many as you like.</div>
+        <div class="list-manager" id="staffpw-list"></div>
+        <div class="add-row">
+          <input type="text" id="new-staffpw" placeholder="Add a password...">
+          <button class="btn-ghost btn-small" onclick="addStaffPassword()">Add</button>
         </div>
-        <div class="field">
-          <label>New Staff Password</label>
-          <input type="password" id="new-pw-staff">
-        </div>
-        <button class="btn-ghost" onclick="changeStaffPassword()">Update Staff Password</button>
       </div>
       <div class="card" style="max-width:640px;">
         <h2 style="font-size:16px; margin-bottom:16px;">Admin Password</h2>
@@ -423,8 +419,12 @@ async function apiPost(payload){
 const DEFAULT_CATEGORIES = ["Lighting", "Video / Projection", "Audio", "Rigging / Automation", "Networking / Show Control", "Other"];
 
 function normalizeConfig(raw){
+  let staffPasswords = raw.StaffPasswords;
+  if(!Array.isArray(staffPasswords)){
+    staffPasswords = raw.StaffPassword ? [raw.StaffPassword] : [];
+  }
   return {
-    staffPassword: raw.StaffPassword,
+    staffPasswords: staffPasswords,
     adminPassword: raw.AdminPassword,
     venues: raw.Venues || [],
     personnel: raw.Personnel || [],
@@ -457,7 +457,7 @@ async function attemptLogin(){
   const val = document.getElementById('pw-input').value;
   if(val === config.adminPassword){
     isAdmin = true;
-  }else if(val === config.staffPassword){
+  }else if(config.staffPasswords.includes(val)){
     isAdmin = false;
   }else{
     const card = document.querySelector('.patch-card');
@@ -745,6 +745,14 @@ function renderSettingsLists(){
       <button class="btn-danger" onclick="removeCategory(${i})">Remove</button>
     </div>
   `).join('') : `<div style="color:var(--text-muted); font-size:13px;">No categories added yet.</div>`;
+
+  const staffpwList = document.getElementById('staffpw-list');
+  staffpwList.innerHTML = config.staffPasswords.length ? config.staffPasswords.map((p,i)=>`
+    <div class="list-item">
+      <span class="meta-mono">${escapeHtml(p)}</span>
+      <button class="btn-danger" onclick="removeStaffPassword(${i})">Remove</button>
+    </div>
+  `).join('') : `<div style="color:var(--text-muted); font-size:13px;">No staff passwords set.</div>`;
 }
 
 async function saveConfigList(key, value){
@@ -850,24 +858,43 @@ async function removeCategory(i){
   }
 }
 
-async function changeStaffPassword(){
-  const cur = document.getElementById('cur-pw-staff').value;
-  const next = document.getElementById('new-pw-staff').value;
-  if(cur !== config.adminPassword){
-    showToast("Admin password confirmation is incorrect");
+async function addStaffPassword(){
+  const input = document.getElementById('new-staffpw');
+  const val = input.value.trim();
+  if(!val) return;
+  if(val.length < 4){
+    showToast("Password must be at least 4 characters");
     return;
   }
-  if(!next || next.length < 4){
-    showToast("New password must be at least 4 characters");
+  if(config.staffPasswords.includes(val)){
+    showToast("That password is already in the list");
     return;
   }
+  const backup = config.staffPasswords.slice();
+  config.staffPasswords.push(val);
   try{
-    await saveConfigValue('StaffPassword', next);
-    config.staffPassword = next;
-    document.getElementById('cur-pw-staff').value='';
-    document.getElementById('new-pw-staff').value='';
-    showToast("Staff password updated");
+    await saveConfigList('StaffPasswords', config.staffPasswords);
+    input.value='';
+    renderSettingsLists();
+    showToast("Staff password added");
   }catch(e){
+    config.staffPasswords = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function removeStaffPassword(i){
+  if(config.staffPasswords.length <= 1){
+    showToast("At least one staff password must remain");
+    return;
+  }
+  const backup = config.staffPasswords.slice();
+  config.staffPasswords.splice(i,1);
+  try{
+    await saveConfigList('StaffPasswords', config.staffPasswords);
+    renderSettingsLists();
+  }catch(e){
+    config.staffPasswords = backup;
     showToast("Couldn't save to the Google Sheet");
   }
 }
