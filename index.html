@@ -1,0 +1,797 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LX/AV Fault Tracker</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Inter:wght@400;500;600&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+  :root{
+    --bg:#0D0F12;
+    --surface:#161A1F;
+    --surface-alt:#1E242B;
+    --border:#2A313A;
+    --text:#E9E6DF;
+    --text-muted:#8A939C;
+    --amber:#F2A65A;
+    --amber-dim:#8A6636;
+    --blue:#5BA3D0;
+    --green:#6FCF97;
+    --red:#E0637C;
+    --radius:3px;
+  }
+  *{box-sizing:border-box;}
+  body{
+    margin:0;
+    background:var(--bg);
+    color:var(--text);
+    font-family:'Inter',sans-serif;
+    min-height:100vh;
+  }
+  body::before{
+    content:"";
+    position:fixed; inset:0;
+    background:
+      radial-gradient(ellipse 900px 500px at 50% -10%, rgba(242,166,90,0.06), transparent 60%);
+    pointer-events:none;
+  }
+  .eyebrow{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    letter-spacing:0.14em;
+    text-transform:uppercase;
+    color:var(--amber);
+  }
+  h1,h2,h3{
+    font-family:'Oswald',sans-serif;
+    text-transform:uppercase;
+    letter-spacing:0.03em;
+    margin:0;
+    font-weight:600;
+  }
+  /* ---------- LOGIN ---------- */
+  #login-screen{
+    min-height:100vh;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    padding:24px;
+  }
+  .patch-card{
+    width:100%;
+    max-width:380px;
+    background:var(--surface);
+    border:1px solid var(--border);
+    border-radius:var(--radius);
+    padding:32px 28px;
+    position:relative;
+  }
+  .patch-card::before{
+    content:"";
+    position:absolute;
+    top:0; left:24px; right:24px;
+    height:2px;
+    background:repeating-linear-gradient(90deg, var(--amber-dim) 0 6px, transparent 6px 12px);
+  }
+  .rig-dot{
+    width:10px; height:10px; border-radius:50%;
+    background:var(--amber);
+    box-shadow:0 0 10px 2px rgba(242,166,90,0.6);
+    display:inline-block;
+    margin-right:8px;
+  }
+  .login-title{font-size:22px; margin-top:14px;}
+  .login-sub{color:var(--text-muted); font-size:13px; margin-top:6px; margin-bottom:24px; line-height:1.5;}
+  input, select, textarea{
+    font-family:'Inter',sans-serif;
+    background:var(--surface-alt);
+    border:1px solid var(--border);
+    color:var(--text);
+    padding:10px 12px;
+    border-radius:var(--radius);
+    font-size:14px;
+    width:100%;
+    outline:none;
+  }
+  input:focus, select:focus, textarea:focus{
+    border-color:var(--amber);
+    box-shadow:0 0 0 1px var(--amber);
+  }
+  label{
+    font-family:'JetBrains Mono',monospace;
+    font-size:10.5px;
+    letter-spacing:0.08em;
+    text-transform:uppercase;
+    color:var(--text-muted);
+    display:block;
+    margin-bottom:6px;
+  }
+  .field{margin-bottom:16px;}
+  button{
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:13.5px;
+    border:none;
+    border-radius:var(--radius);
+    padding:11px 18px;
+    cursor:pointer;
+    transition:filter .15s, transform .05s;
+  }
+  button:active{transform:scale(0.98);}
+  .btn-primary{background:var(--amber); color:#1A1300; width:100%;}
+  .btn-primary:hover{filter:brightness(1.08);}
+  .btn-ghost{background:transparent; border:1px solid var(--border); color:var(--text);}
+  .btn-ghost:hover{border-color:var(--amber); color:var(--amber);}
+  .btn-danger{background:transparent; border:1px solid var(--red); color:var(--red); padding:6px 10px; font-size:12px;}
+  .btn-small{padding:6px 12px; font-size:12.5px;}
+  .error-msg{color:var(--red); font-size:12.5px; margin-top:10px; font-family:'JetBrains Mono',monospace; display:none;}
+  .shake{animation:shake .3s;}
+  @keyframes shake{25%{transform:translateX(-6px)}75%{transform:translateX(6px)}}
+
+  /* ---------- APP SHELL ---------- */
+  #main-screen{display:none; min-height:100vh; flex-direction:column;}
+  header.topbar{
+    border-bottom:1px solid var(--border);
+    background:var(--surface);
+    padding:16px 28px;
+    display:flex; align-items:center; justify-content:space-between;
+    flex-wrap:wrap; gap:12px;
+  }
+  .brand{display:flex; align-items:center;}
+  .brand-text .eyebrow{display:block;}
+  .brand-text h1{font-size:19px; margin-top:2px;}
+  nav.tabs{display:flex; gap:4px; background:var(--surface-alt); padding:4px; border-radius:var(--radius);}
+  nav.tabs button{
+    background:transparent; color:var(--text-muted); font-family:'JetBrains Mono',monospace;
+    font-size:11.5px; letter-spacing:0.06em; text-transform:uppercase; padding:8px 14px;
+  }
+  nav.tabs button.active{background:var(--bg); color:var(--amber);}
+  main{padding:28px; flex:1; max-width:1180px; width:100%; margin:0 auto;}
+  .panel{display:none;}
+  .panel.active{display:block;}
+  .card{background:var(--surface); border:1px solid var(--border); border-radius:var(--radius); padding:24px;}
+  .grid-2{display:grid; grid-template-columns:1fr 1fr; gap:16px;}
+  @media (max-width:640px){
+    .grid-2{grid-template-columns:1fr;}
+    header.topbar{padding:14px 16px;}
+    main{padding:16px;}
+    .card{padding:18px;}
+    nav.tabs button{padding:8px 10px; font-size:10.5px;}
+    .toolbar{gap:8px;}
+    .toolbar select{min-width:0; flex:1 1 45%;}
+    table{font-size:12px;}
+    thead th, tbody td{padding:8px;}
+    .remarks-cell{max-width:160px;}
+  }
+
+  /* ---------- REPORTS TABLE ---------- */
+  .toolbar{display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:18px;}
+  .toolbar select{width:auto; min-width:150px;}
+  .toolbar .spacer{flex:1;}
+  table{width:100%; border-collapse:collapse; font-size:13px;}
+  thead th{
+    text-align:left; font-family:'JetBrains Mono',monospace; font-size:10.5px;
+    letter-spacing:0.06em; text-transform:uppercase; color:var(--text-muted);
+    padding:10px 12px; border-bottom:1px solid var(--border);
+  }
+  tbody td{padding:12px; border-bottom:1px solid var(--border); vertical-align:top;}
+  tbody tr:hover{background:rgba(255,255,255,0.02);}
+  .remarks-cell{max-width:320px; white-space:pre-wrap; line-height:1.4;}
+  .meta-mono{font-family:'JetBrains Mono',monospace; font-size:12px; color:var(--text-muted);}
+  .status-pill{display:inline-flex; align-items:center; gap:6px; font-family:'JetBrains Mono',monospace; font-size:11px; text-transform:uppercase;}
+  .gel-dot{width:8px; height:8px; border-radius:50%; box-shadow:0 0 6px 1px currentColor;}
+  .status-open{color:var(--blue);}
+  .status-progress{color:var(--amber);}
+  .status-resolved{color:var(--green);}
+  select.status-select{
+    background:var(--surface-alt); border:1px solid var(--border); color:var(--text);
+    font-family:'JetBrains Mono',monospace; font-size:11px; padding:5px 8px; width:auto;
+  }
+  .empty-state{
+    text-align:center; padding:60px 20px; color:var(--text-muted);
+  }
+  .empty-state .eyebrow{display:block; margin-bottom:8px;}
+
+  /* ---------- SETTINGS ---------- */
+  .list-manager{background:var(--surface-alt); border:1px solid var(--border); border-radius:var(--radius); padding:14px; margin-top:10px;}
+  .list-item{display:flex; justify-content:space-between; align-items:center; padding:8px 4px; border-bottom:1px solid var(--border); font-size:13.5px;}
+  .list-item:last-child{border-bottom:none;}
+  .add-row{display:flex; gap:8px; margin-top:12px;}
+  .add-row input{flex:1;}
+  .section-gap{margin-bottom:28px;}
+  .toast{
+    position:fixed; bottom:24px; right:24px; background:var(--surface); border:1px solid var(--amber);
+    color:var(--text); padding:12px 18px; border-radius:var(--radius); font-size:13px;
+    font-family:'JetBrains Mono',monospace; opacity:0; transform:translateY(8px);
+    transition:opacity .2s, transform .2s; pointer-events:none; z-index:100;
+  }
+  .toast.show{opacity:1; transform:translateY(0);}
+  .loading{color:var(--text-muted); font-family:'JetBrains Mono',monospace; font-size:13px; padding:20px 0;}
+</style>
+</head>
+<body>
+
+<div id="login-screen">
+  <div class="patch-card">
+    <span class="rig-dot"></span>
+    <div class="eyebrow" style="display:inline; vertical-align:middle;">Dept. Access</div>
+    <div class="login-title">LX / AV Fault Tracker</div>
+    <div class="login-sub">Enter the department password to view and log fault reports.</div>
+    <div class="field">
+      <label for="pw-input">Password</label>
+      <input type="password" id="pw-input" placeholder="••••••••" autocomplete="off">
+    </div>
+    <button class="btn-primary" onclick="attemptLogin()">Enter</button>
+    <div class="error-msg" id="login-error">Incorrect password. Try again.</div>
+  </div>
+</div>
+
+<div id="main-screen">
+  <header class="topbar">
+    <div class="brand">
+      <div class="brand-text">
+        <span class="eyebrow">Lighting &amp; Visual Media</span>
+        <h1>Fault Tracker</h1>
+      </div>
+    </div>
+    <nav class="tabs">
+      <button data-tab="new" class="active" onclick="switchTab('new')">New Report</button>
+      <button data-tab="all" onclick="switchTab('all')">All Reports</button>
+      <button data-tab="settings" onclick="switchTab('settings')">Settings</button>
+    </nav>
+    <button class="btn-ghost btn-small" onclick="logout()">Log Out</button>
+  </header>
+
+  <main>
+    <!-- NEW REPORT -->
+    <section class="panel active" id="panel-new">
+      <div class="card" style="max-width:640px;">
+        <h2 style="font-size:16px; margin-bottom:20px;">Log a Fault</h2>
+        <div class="grid-2">
+          <div class="field">
+            <label>Date</label>
+            <input type="date" id="f-date">
+          </div>
+          <div class="field">
+            <label>Venue</label>
+            <select id="f-venue"></select>
+          </div>
+          <div class="field">
+            <label>Category</label>
+            <select id="f-category">
+              <option>Lighting</option>
+              <option>Video / Projection</option>
+              <option>Audio</option>
+              <option>Rigging / Automation</option>
+              <option>Networking / Show Control</option>
+              <option>Other</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Reported By</label>
+            <select id="f-reporter"></select>
+          </div>
+        </div>
+        <div class="field">
+          <label>Remarks</label>
+          <textarea id="f-remarks" rows="4" placeholder="Describe the fault: what, where, and any immediate action taken..."></textarea>
+        </div>
+        <button class="btn-primary" style="width:auto;" onclick="submitReport()">Submit Report</button>
+      </div>
+    </section>
+
+    <!-- ALL REPORTS -->
+    <section class="panel" id="panel-all">
+      <div class="toolbar">
+        <select id="filter-venue" onchange="renderTable()"><option value="">All Venues</option></select>
+        <select id="filter-status" onchange="renderTable()">
+          <option value="">All Statuses</option>
+          <option>Open</option>
+          <option>In Progress</option>
+          <option>Resolved</option>
+        </select>
+        <div class="spacer"></div>
+        <button class="btn-ghost btn-small" onclick="refreshReports()">Refresh</button>
+        <button class="btn-primary" style="width:auto;" onclick="exportToExcel()">Export to Excel</button>
+      </div>
+      <div class="card" style="padding:0; overflow-x:auto;">
+        <div id="table-wrap"></div>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="panel" id="panel-settings">
+      <div class="card section-gap" style="max-width:640px;">
+        <h2 style="font-size:16px;">Venues</h2>
+        <div class="list-manager" id="venue-list"></div>
+        <div class="add-row">
+          <input type="text" id="new-venue" placeholder="Add a venue...">
+          <button class="btn-ghost btn-small" onclick="addVenue()">Add</button>
+        </div>
+      </div>
+      <div class="card section-gap" style="max-width:640px;">
+        <h2 style="font-size:16px;">Personnel</h2>
+        <div class="list-manager" id="personnel-list"></div>
+        <div class="add-row">
+          <input type="text" id="new-person" placeholder="Add a name...">
+          <button class="btn-ghost btn-small" onclick="addPerson()">Add</button>
+        </div>
+      </div>
+      <div class="card section-gap" style="max-width:640px;">
+        <h2 style="font-size:16px; margin-bottom:16px;">Staff Password</h2>
+        <div class="login-sub" style="margin-bottom:16px;">Used by the whole department to view and log reports.</div>
+        <div class="field">
+          <label>Admin Password (to confirm it's you)</label>
+          <input type="password" id="cur-pw-staff">
+        </div>
+        <div class="field">
+          <label>New Staff Password</label>
+          <input type="password" id="new-pw-staff">
+        </div>
+        <button class="btn-ghost" onclick="changeStaffPassword()">Update Staff Password</button>
+      </div>
+      <div class="card" style="max-width:640px;">
+        <h2 style="font-size:16px; margin-bottom:16px;">Admin Password</h2>
+        <div class="login-sub" style="margin-bottom:16px;">Grants access to this Settings tab.</div>
+        <div class="field">
+          <label>Current Admin Password</label>
+          <input type="password" id="cur-pw-admin">
+        </div>
+        <div class="field">
+          <label>New Admin Password</label>
+          <input type="password" id="new-pw-admin">
+        </div>
+        <button class="btn-ghost" onclick="changeAdminPassword()">Update Admin Password</button>
+      </div>
+    </section>
+  </main>
+</div>
+
+<div class="toast" id="toast"></div>
+
+<script>
+// ======================================================================
+// PASTE YOUR DEPLOYED GOOGLE APPS SCRIPT WEB APP URL BELOW.
+// See setup-guide.md for how to get this URL. Until it's filled in,
+// the app will show a setup message instead of the login screen.
+// ======================================================================
+const SCRIPT_URL = "https://script.google.com/macros/s/AKfycbz8OTG8pX6b4BGm-1W5mfD2REIdDJB8_pt6osgRtUKB0Bkr_lpvsWHS990TgDhfDqAltg/exec";
+
+let config = null;
+let reports = [];
+let isAdmin = false;
+
+function showToast(msg){
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(()=>t.classList.remove('show'), 2200);
+}
+
+if(!SCRIPT_URL || SCRIPT_URL.indexOf('PASTE_YOUR') === 0){
+  document.addEventListener('DOMContentLoaded', ()=>{
+    document.querySelector('.patch-card').innerHTML = `
+      <span class="rig-dot"></span>
+      <div class="eyebrow" style="display:inline; vertical-align:middle;">Setup Needed</div>
+      <div class="login-title">Connect Your Google Sheet</div>
+      <div class="login-sub">This app needs a Google Apps Script Web App URL before it can run.
+      Follow setup-guide.md, then paste the deployment URL into the SCRIPT_URL constant near the
+      top of the script in this file.</div>
+    `;
+  });
+}
+
+async function apiGet(){
+  const res = await fetch(SCRIPT_URL, { method: 'GET' });
+  if(!res.ok) throw new Error('Network error: ' + res.status);
+  return res.json();
+}
+
+async function apiPost(payload){
+  const res = await fetch(SCRIPT_URL, {
+    method: 'POST',
+    body: JSON.stringify(payload)
+  });
+  if(!res.ok) throw new Error('Network error: ' + res.status);
+  return res.json();
+}
+
+function normalizeConfig(raw){
+  return {
+    staffPassword: raw.StaffPassword,
+    adminPassword: raw.AdminPassword,
+    venues: raw.Venues || [],
+    personnel: raw.Personnel || []
+  };
+}
+
+async function loadAll(){
+  const data = await apiGet();
+  config = normalizeConfig(data.config || {});
+  reports = data.reports || [];
+}
+
+async function attemptLogin(){
+  const btn = document.querySelector('.patch-card button.btn-primary');
+  const originalLabel = btn.textContent;
+  btn.textContent = 'Connecting...';
+  btn.disabled = true;
+  try{
+    await loadAll();
+  }catch(e){
+    showToast("Couldn't reach the Google Sheet. Check the connection and try again.");
+    btn.textContent = originalLabel;
+    btn.disabled = false;
+    return;
+  }
+  btn.textContent = originalLabel;
+  btn.disabled = false;
+
+  const val = document.getElementById('pw-input').value;
+  if(val === config.adminPassword){
+    isAdmin = true;
+  }else if(val === config.staffPassword){
+    isAdmin = false;
+  }else{
+    const card = document.querySelector('.patch-card');
+    const err = document.getElementById('login-error');
+    err.style.display='block';
+    card.classList.add('shake');
+    setTimeout(()=>card.classList.remove('shake'),300);
+    return;
+  }
+  document.getElementById('login-screen').style.display='none';
+  document.getElementById('main-screen').style.display='flex';
+  if(!isAdmin){
+    document.querySelector('[data-tab="settings"]').style.display='none';
+  }
+  await initApp();
+}
+
+document.getElementById('pw-input').addEventListener('keydown', (e)=>{
+  if(e.key === 'Enter') attemptLogin();
+});
+
+async function initApp(){
+  populateDropdowns();
+  document.getElementById('f-date').value = new Date().toISOString().slice(0,10);
+  renderSettingsLists();
+  renderTable();
+}
+
+async function refreshReports(){
+  try{
+    const data = await apiGet();
+    config = normalizeConfig(data.config || {});
+    reports = data.reports || [];
+    renderTable();
+    populateDropdowns();
+    if(isAdmin) renderSettingsLists();
+    showToast("Reports refreshed");
+  }catch(e){
+    showToast("Couldn't reach the Google Sheet");
+  }
+}
+
+function populateDropdowns(){
+  const venueSel = document.getElementById('f-venue');
+  const reporterSel = document.getElementById('f-reporter');
+  const filterVenue = document.getElementById('filter-venue');
+  venueSel.innerHTML = config.venues.map(v=>`<option>${escapeHtml(v)}</option>`).join('');
+  reporterSel.innerHTML = config.personnel.map(p=>`<option>${escapeHtml(p)}</option>`).join('');
+  filterVenue.innerHTML = '<option value="">All Venues</option>' + config.venues.map(v=>`<option>${escapeHtml(v)}</option>`).join('');
+}
+
+function escapeHtml(str){
+  return String(str).replace(/[&<>"']/g, m => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[m]));
+}
+
+function logout(){
+  isAdmin = false;
+  document.getElementById('pw-input').value = '';
+  document.getElementById('login-error').style.display = 'none';
+  document.querySelector('[data-tab="settings"]').style.display = '';
+  switchTabForce('new');
+  document.getElementById('main-screen').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'flex';
+}
+
+function switchTabForce(name){
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+}
+
+function switchTab(name){
+  if(name==='settings' && !isAdmin) return;
+  document.querySelectorAll('nav.tabs button').forEach(b=>b.classList.toggle('active', b.dataset.tab===name));
+  document.querySelectorAll('.panel').forEach(p=>p.classList.remove('active'));
+  document.getElementById('panel-'+name).classList.add('active');
+  if(name==='all') renderTable();
+}
+
+async function submitReport(){
+  const date = document.getElementById('f-date').value;
+  const venue = document.getElementById('f-venue').value;
+  const category = document.getElementById('f-category').value;
+  const reporter = document.getElementById('f-reporter').value;
+  const remarks = document.getElementById('f-remarks').value.trim();
+
+  if(!date || !venue || !reporter || !remarks){
+    showToast("Fill in all fields before submitting");
+    return;
+  }
+
+  const report = {
+    id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
+    date, venue, category, reporter, remarks,
+    status: "Open",
+    createdAt: new Date().toISOString()
+  };
+
+  try{
+    const result = await apiPost({ action: 'addReport', report: report });
+    if(!result.success) throw new Error(result.error || 'Unknown error');
+    reports.unshift(report);
+  }catch(e){
+    showToast("Couldn't save to the Google Sheet");
+    return;
+  }
+
+  document.getElementById('f-remarks').value = '';
+  showToast("Fault report submitted");
+  switchTab('all');
+  renderTable();
+}
+
+function statusClass(status){
+  if(status==='Open') return 'status-open';
+  if(status==='In Progress') return 'status-progress';
+  return 'status-resolved';
+}
+
+function renderTable(){
+  const wrap = document.getElementById('table-wrap');
+  const venueFilter = document.getElementById('filter-venue').value;
+  const statusFilter = document.getElementById('filter-status').value;
+
+  let rows = reports.slice();
+  if(venueFilter) rows = rows.filter(r=>r.venue===venueFilter);
+  if(statusFilter) rows = rows.filter(r=>r.status===statusFilter);
+  rows.sort((a,b)=> new Date(b.date) - new Date(a.date) || new Date(b.createdAt)-new Date(a.createdAt));
+
+  if(rows.length===0){
+    wrap.innerHTML = `<div class="empty-state"><span class="eyebrow">No reports</span>Nothing logged yet for this filter.</div>`;
+    return;
+  }
+
+  wrap.innerHTML = `
+    <table>
+      <thead>
+        <tr>
+          <th>Date</th><th>Venue</th><th>Category</th><th>Reported By</th><th>Remarks</th><th>Status</th><th></th>
+        </tr>
+      </thead>
+      <tbody>
+        ${rows.map(r=>`
+          <tr>
+            <td class="meta-mono">${escapeHtml(r.date)}</td>
+            <td>${escapeHtml(r.venue)}</td>
+            <td>${escapeHtml(r.category||'')}</td>
+            <td>${escapeHtml(r.reporter)}</td>
+            <td class="remarks-cell">${escapeHtml(r.remarks)}</td>
+            <td>
+              <span class="status-pill ${statusClass(r.status)}"><span class="gel-dot"></span></span>
+              <select class="status-select" onchange="updateStatus('${r.id}', this.value)">
+                <option ${r.status==='Open'?'selected':''}>Open</option>
+                <option ${r.status==='In Progress'?'selected':''}>In Progress</option>
+                <option ${r.status==='Resolved'?'selected':''}>Resolved</option>
+              </select>
+            </td>
+            <td><button class="btn-danger" onclick="deleteReport('${r.id}')">Delete</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+async function updateStatus(id, newStatus){
+  const r = reports.find(r=>r.id===id);
+  if(!r) return;
+  const prevStatus = r.status;
+  r.status = newStatus;
+  renderTable();
+  try{
+    const result = await apiPost({ action: 'updateStatus', id: id, status: newStatus });
+    if(!result.success) throw new Error(result.error || 'Unknown error');
+    showToast("Status updated");
+  }catch(e){
+    r.status = prevStatus;
+    renderTable();
+    showToast("Couldn't update the Google Sheet");
+  }
+}
+
+async function deleteReport(id){
+  if(!confirm("Delete this report? This cannot be undone.")) return;
+  const backup = reports.slice();
+  reports = reports.filter(r=>r.id!==id);
+  renderTable();
+  try{
+    const result = await apiPost({ action: 'deleteReport', id: id });
+    if(!result.success) throw new Error(result.error || 'Unknown error');
+    showToast("Report deleted");
+  }catch(e){
+    reports = backup;
+    renderTable();
+    showToast("Couldn't delete from the Google Sheet");
+  }
+}
+
+function exportToExcel(){
+  const venueFilter = document.getElementById('filter-venue').value;
+  const statusFilter = document.getElementById('filter-status').value;
+  let rows = reports.slice();
+  if(venueFilter) rows = rows.filter(r=>r.venue===venueFilter);
+  if(statusFilter) rows = rows.filter(r=>r.status===statusFilter);
+  rows.sort((a,b)=> new Date(b.date) - new Date(a.date));
+
+  const data = rows.map(r=>({
+    Date: r.date,
+    Venue: r.venue,
+    Category: r.category || '',
+    "Reported By": r.reporter,
+    Remarks: r.remarks,
+    Status: r.status,
+    "Logged At": r.createdAt
+  }));
+
+  const ws = XLSX.utils.json_to_sheet(data);
+  ws['!cols'] = [{wch:12},{wch:20},{wch:20},{wch:16},{wch:50},{wch:12},{wch:22}];
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Fault Reports");
+  const today = new Date().toISOString().slice(0,10);
+  XLSX.writeFile(wb, `fault-reports-${today}.xlsx`);
+  showToast("Excel file downloaded");
+}
+
+function renderSettingsLists(){
+  const venueList = document.getElementById('venue-list');
+  const personnelList = document.getElementById('personnel-list');
+
+  venueList.innerHTML = config.venues.length ? config.venues.map((v,i)=>`
+    <div class="list-item">
+      <span>${escapeHtml(v)}</span>
+      <button class="btn-danger" onclick="removeVenue(${i})">Remove</button>
+    </div>
+  `).join('') : `<div style="color:var(--text-muted); font-size:13px;">No venues added yet.</div>`;
+
+  personnelList.innerHTML = config.personnel.length ? config.personnel.map((p,i)=>`
+    <div class="list-item">
+      <span>${escapeHtml(p)}</span>
+      <button class="btn-danger" onclick="removePerson(${i})">Remove</button>
+    </div>
+  `).join('') : `<div style="color:var(--text-muted); font-size:13px;">No personnel added yet.</div>`;
+}
+
+async function saveConfigList(key, value){
+  const result = await apiPost({ action: 'updateConfigList', key: key, value: value });
+  if(!result.success) throw new Error(result.error || 'Unknown error');
+}
+
+async function saveConfigValue(key, value){
+  const result = await apiPost({ action: 'updateConfigValue', key: key, value: value });
+  if(!result.success) throw new Error(result.error || 'Unknown error');
+}
+
+async function addVenue(){
+  const input = document.getElementById('new-venue');
+  const val = input.value.trim();
+  if(!val) return;
+  const backup = config.venues.slice();
+  config.venues.push(val);
+  try{
+    await saveConfigList('Venues', config.venues);
+    input.value='';
+    renderSettingsLists();
+    populateDropdowns();
+    showToast("Venue added");
+  }catch(e){
+    config.venues = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function removeVenue(i){
+  const backup = config.venues.slice();
+  config.venues.splice(i,1);
+  try{
+    await saveConfigList('Venues', config.venues);
+    renderSettingsLists();
+    populateDropdowns();
+  }catch(e){
+    config.venues = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function addPerson(){
+  const input = document.getElementById('new-person');
+  const val = input.value.trim();
+  if(!val) return;
+  const backup = config.personnel.slice();
+  config.personnel.push(val);
+  try{
+    await saveConfigList('Personnel', config.personnel);
+    input.value='';
+    renderSettingsLists();
+    populateDropdowns();
+    showToast("Person added");
+  }catch(e){
+    config.personnel = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function removePerson(i){
+  const backup = config.personnel.slice();
+  config.personnel.splice(i,1);
+  try{
+    await saveConfigList('Personnel', config.personnel);
+    renderSettingsLists();
+    populateDropdowns();
+  }catch(e){
+    config.personnel = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function changeStaffPassword(){
+  const cur = document.getElementById('cur-pw-staff').value;
+  const next = document.getElementById('new-pw-staff').value;
+  if(cur !== config.adminPassword){
+    showToast("Admin password confirmation is incorrect");
+    return;
+  }
+  if(!next || next.length < 4){
+    showToast("New password must be at least 4 characters");
+    return;
+  }
+  try{
+    await saveConfigValue('StaffPassword', next);
+    config.staffPassword = next;
+    document.getElementById('cur-pw-staff').value='';
+    document.getElementById('new-pw-staff').value='';
+    showToast("Staff password updated");
+  }catch(e){
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function changeAdminPassword(){
+  const cur = document.getElementById('cur-pw-admin').value;
+  const next = document.getElementById('new-pw-admin').value;
+  if(cur !== config.adminPassword){
+    showToast("Current admin password is incorrect");
+    return;
+  }
+  if(!next || next.length < 4){
+    showToast("New password must be at least 4 characters");
+    return;
+  }
+  try{
+    await saveConfigValue('AdminPassword', next);
+    config.adminPassword = next;
+    document.getElementById('cur-pw-admin').value='';
+    document.getElementById('new-pw-admin').value='';
+    showToast("Admin password updated");
+  }catch(e){
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+</script>
+</body>
+</html>
