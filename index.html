@@ -260,14 +260,7 @@
           </div>
           <div class="field">
             <label>Category</label>
-            <select id="f-category">
-              <option>Lighting</option>
-              <option>Video / Projection</option>
-              <option>Audio</option>
-              <option>Rigging / Automation</option>
-              <option>Networking / Show Control</option>
-              <option>Other</option>
-            </select>
+            <select id="f-category"></select>
           </div>
           <div class="field">
             <label>Reported By</label>
@@ -286,6 +279,7 @@
     <section class="panel" id="panel-all">
       <div class="toolbar">
         <select id="filter-venue" onchange="renderTable()"><option value="">All Venues</option></select>
+        <select id="filter-category" onchange="renderTable()"><option value="">All Categories</option></select>
         <select id="filter-status" onchange="renderTable()">
           <option value="">All Statuses</option>
           <option>Open</option>
@@ -309,6 +303,14 @@
         <div class="add-row">
           <input type="text" id="new-venue" placeholder="Add a venue...">
           <button class="btn-ghost btn-small" onclick="addVenue()">Add</button>
+        </div>
+      </div>
+      <div class="card section-gap" style="max-width:640px;">
+        <h2 style="font-size:16px;">Categories</h2>
+        <div class="list-manager" id="category-list"></div>
+        <div class="add-row">
+          <input type="text" id="new-category" placeholder="Add a category...">
+          <button class="btn-ghost btn-small" onclick="addCategory()">Add</button>
         </div>
       </div>
       <div class="card section-gap" style="max-width:640px;">
@@ -398,12 +400,15 @@ async function apiPost(payload){
   return res.json();
 }
 
+const DEFAULT_CATEGORIES = ["Lighting", "Video / Projection", "Audio", "Rigging / Automation", "Networking / Show Control", "Other"];
+
 function normalizeConfig(raw){
   return {
     staffPassword: raw.StaffPassword,
     adminPassword: raw.AdminPassword,
     venues: raw.Venues || [],
-    personnel: raw.Personnel || []
+    personnel: raw.Personnel || [],
+    categories: raw.Categories || DEFAULT_CATEGORIES
   };
 }
 
@@ -478,10 +483,14 @@ async function refreshReports(){
 function populateDropdowns(){
   const venueSel = document.getElementById('f-venue');
   const reporterSel = document.getElementById('f-reporter');
+  const categorySel = document.getElementById('f-category');
   const filterVenue = document.getElementById('filter-venue');
+  const filterCategory = document.getElementById('filter-category');
   venueSel.innerHTML = config.venues.map(v=>`<option>${escapeHtml(v)}</option>`).join('');
   reporterSel.innerHTML = config.personnel.map(p=>`<option>${escapeHtml(p)}</option>`).join('');
+  categorySel.innerHTML = config.categories.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
   filterVenue.innerHTML = '<option value="">All Venues</option>' + config.venues.map(v=>`<option>${escapeHtml(v)}</option>`).join('');
+  filterCategory.innerHTML = '<option value="">All Categories</option>' + config.categories.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
 }
 
 function escapeHtml(str){
@@ -555,10 +564,12 @@ function statusClass(status){
 function renderTable(){
   const wrap = document.getElementById('table-wrap');
   const venueFilter = document.getElementById('filter-venue').value;
+  const categoryFilter = document.getElementById('filter-category').value;
   const statusFilter = document.getElementById('filter-status').value;
 
   let rows = reports.slice();
   if(venueFilter) rows = rows.filter(r=>r.venue===venueFilter);
+  if(categoryFilter) rows = rows.filter(r=>r.category===categoryFilter);
   if(statusFilter) rows = rows.filter(r=>r.status===statusFilter);
   rows.sort((a,b)=> new Date(b.date) - new Date(a.date) || new Date(b.createdAt)-new Date(a.createdAt));
 
@@ -633,9 +644,11 @@ async function deleteReport(id){
 
 function exportToExcel(){
   const venueFilter = document.getElementById('filter-venue').value;
+  const categoryFilter = document.getElementById('filter-category').value;
   const statusFilter = document.getElementById('filter-status').value;
   let rows = reports.slice();
   if(venueFilter) rows = rows.filter(r=>r.venue===venueFilter);
+  if(categoryFilter) rows = rows.filter(r=>r.category===categoryFilter);
   if(statusFilter) rows = rows.filter(r=>r.status===statusFilter);
   rows.sort((a,b)=> new Date(b.date) - new Date(a.date));
 
@@ -661,6 +674,7 @@ function exportToExcel(){
 function renderSettingsLists(){
   const venueList = document.getElementById('venue-list');
   const personnelList = document.getElementById('personnel-list');
+  const categoryList = document.getElementById('category-list');
 
   venueList.innerHTML = config.venues.length ? config.venues.map((v,i)=>`
     <div class="list-item">
@@ -675,6 +689,13 @@ function renderSettingsLists(){
       <button class="btn-danger" onclick="removePerson(${i})">Remove</button>
     </div>
   `).join('') : `<div style="color:var(--text-muted); font-size:13px;">No personnel added yet.</div>`;
+
+  categoryList.innerHTML = config.categories.length ? config.categories.map((c,i)=>`
+    <div class="list-item">
+      <span>${escapeHtml(c)}</span>
+      <button class="btn-danger" onclick="removeCategory(${i})">Remove</button>
+    </div>
+  `).join('') : `<div style="color:var(--text-muted); font-size:13px;">No categories added yet.</div>`;
 }
 
 async function saveConfigList(key, value){
@@ -745,6 +766,37 @@ async function removePerson(i){
     populateDropdowns();
   }catch(e){
     config.personnel = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function addCategory(){
+  const input = document.getElementById('new-category');
+  const val = input.value.trim();
+  if(!val) return;
+  const backup = config.categories.slice();
+  config.categories.push(val);
+  try{
+    await saveConfigList('Categories', config.categories);
+    input.value='';
+    renderSettingsLists();
+    populateDropdowns();
+    showToast("Category added");
+  }catch(e){
+    config.categories = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function removeCategory(i){
+  const backup = config.categories.slice();
+  config.categories.splice(i,1);
+  try{
+    await saveConfigList('Categories', config.categories);
+    renderSettingsLists();
+    populateDropdowns();
+  }catch(e){
+    config.categories = backup;
     showToast("Couldn't save to the Google Sheet");
   }
 }
