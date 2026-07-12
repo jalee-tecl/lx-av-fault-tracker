@@ -283,7 +283,8 @@
           </div>
           <div class="field">
             <label>Reported By</label>
-            <select id="f-reporter"></select>
+            <select id="f-reporter" onchange="toggleOtherReporter()"></select>
+            <input type="text" id="f-reporter-other" placeholder="Enter your name" style="display:none; margin-top:8px;">
           </div>
         </div>
         <div class="field">
@@ -506,7 +507,7 @@ function populateDropdowns(){
   const filterVenue = document.getElementById('filter-venue');
   const filterCategory = document.getElementById('filter-category');
   venueSel.innerHTML = config.venues.map(v=>`<option>${escapeHtml(v)}</option>`).join('');
-  reporterSel.innerHTML = config.personnel.map(p=>`<option>${escapeHtml(p)}</option>`).join('');
+  reporterSel.innerHTML = config.personnel.map(p=>`<option>${escapeHtml(p)}</option>`).join('') + '<option value="__other__">Others...</option>';
   categorySel.innerHTML = config.categories.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
   filterVenue.innerHTML = '<option value="">All Venues</option>' + config.venues.map(v=>`<option>${escapeHtml(v)}</option>`).join('');
   filterCategory.innerHTML = '<option value="">All Categories</option>' + config.categories.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
@@ -551,11 +552,26 @@ function singaporeTimestamp(){
   return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}+08:00`;
 }
 
+function toggleOtherReporter(){
+  const sel = document.getElementById('f-reporter');
+  const other = document.getElementById('f-reporter-other');
+  if(sel.value === '__other__'){
+    other.style.display = 'block';
+    other.focus();
+  }else{
+    other.style.display = 'none';
+    other.value = '';
+  }
+}
+
 async function submitReport(){
   const date = document.getElementById('f-date').value;
   const venue = document.getElementById('f-venue').value;
   const category = document.getElementById('f-category').value;
-  const reporter = document.getElementById('f-reporter').value;
+  const reporterSelectValue = document.getElementById('f-reporter').value;
+  const reporter = reporterSelectValue === '__other__'
+    ? document.getElementById('f-reporter-other').value.trim()
+    : reporterSelectValue;
   const remarks = document.getElementById('f-remarks').value.trim();
 
   if(!date || !venue || !reporter || !remarks){
@@ -580,6 +596,9 @@ async function submitReport(){
   }
 
   document.getElementById('f-remarks').value = '';
+  document.getElementById('f-reporter-other').value = '';
+  document.getElementById('f-reporter-other').style.display = 'none';
+  document.getElementById('f-reporter').selectedIndex = 0;
   showToast("Fault report submitted");
   switchTab('all');
   renderTable();
