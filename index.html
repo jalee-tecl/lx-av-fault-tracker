@@ -638,7 +638,7 @@ function renderTable(){
     <table>
       <thead>
         <tr>
-          <th>Date</th><th>Venue</th><th>Category</th><th>Reported By</th><th>Remarks</th><th>Status</th><th></th>
+          <th>Date</th><th>Venue</th><th>Category</th><th>Reported By</th><th>Remarks</th><th>Status</th>${isAdmin ? '<th></th>' : ''}
         </tr>
       </thead>
       <tbody>
@@ -657,7 +657,7 @@ function renderTable(){
                 <option ${r.status==='Resolved'?'selected':''}>Resolved</option>
               </select>
             </td>
-            <td><button class="btn-danger" onclick="deleteReport('${r.id}')">Delete</button></td>
+            ${isAdmin ? `<td><button class="btn-danger" onclick="deleteReport('${r.id}')">Delete</button></td>` : ''}
           </tr>
         `).join('')}
       </tbody>
@@ -683,6 +683,7 @@ async function updateStatus(id, newStatus){
 }
 
 async function deleteReport(id){
+  if(!isAdmin) return;
   if(!confirm("Delete this report? This cannot be undone.")) return;
   const backup = reports.slice();
   reports = reports.filter(r=>r.id!==id);
