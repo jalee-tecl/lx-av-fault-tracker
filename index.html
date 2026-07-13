@@ -249,8 +249,17 @@
       <label for="pw-input">Password</label>
       <input type="password" id="pw-input" placeholder="••••••••" autocomplete="off">
     </div>
-    <button class="btn-primary" onclick="attemptLogin()">Enter</button>
+    <button class="btn-primary" id="enter-btn" onclick="attemptLogin()">Enter</button>
     <div class="error-msg" id="login-error">Incorrect password. Try again.</div>
+
+    <div id="identity-step" style="display:none; text-align:left;">
+      <div class="field" style="margin-top:6px;">
+        <label>Who are you?</label>
+        <select id="identity-select" onchange="toggleIdentityOther()"></select>
+        <input type="text" id="identity-other" placeholder="Enter your name" style="display:none; margin-top:8px;">
+      </div>
+      <button class="btn-primary" onclick="confirmIdentity()">Continue</button>
+    </div>
   </div>
 </div>
 
@@ -349,6 +358,15 @@
         </div>
       </div>
       <div class="card section-gap" style="max-width:640px;">
+        <h2 style="font-size:16px;">Delete Permission</h2>
+        <div class="login-sub" style="margin-bottom:16px;">These people can see and use the Delete button in All Reports, even when logged in with a staff password.</div>
+        <div class="list-manager" id="deletepermission-list"></div>
+        <div class="add-row">
+          <select id="new-deletepermission"></select>
+          <button class="btn-ghost btn-small" onclick="addDeletePermission()">Add</button>
+        </div>
+      </div>
+      <div class="card section-gap" style="max-width:640px;">
         <h2 style="font-size:16px;">Staff Passwords</h2>
         <div class="login-sub" style="margin-bottom:16px;">Anyone entering any of these passwords gets staff access. Add as many as you like.</div>
         <div class="list-manager" id="staffpw-list"></div>
@@ -435,8 +453,15 @@ function normalizeConfig(raw){
     adminPassword: raw.AdminPassword,
     venues: raw.Venues || [],
     personnel: raw.Personnel || [],
-    categories: raw.Categories || DEFAULT_CATEGORIES
+    categories: raw.Categories || DEFAULT_CATEGORIES,
+    deletePermission: raw.DeletePermission || []
   };
+}
+
+let currentUserName = '';
+
+function canDelete(){
+  return isAdmin || config.deletePermission.includes(currentUserName);
 }
 
 async function loadAll(){
@@ -446,7 +471,7 @@ async function loadAll(){
 }
 
 async function attemptLogin(){
-  const btn = document.querySelector('.patch-card button.btn-primary');
+  const btn = document.getElementById('enter-btn');
   const originalLabel = btn.textContent;
   btn.textContent = 'Connecting...';
   btn.disabled = true;
@@ -474,11 +499,45 @@ async function attemptLogin(){
     setTimeout(()=>card.classList.remove('shake'),300);
     return;
   }
+  if(isAdmin){
+    document.getElementById('login-screen').style.display='none';
+    document.getElementById('main-screen').style.display='flex';
+    await initApp();
+    return;
+  }
+
+  document.querySelector('[data-tab="settings"]').style.display='none';
+  const identitySelect = document.getElementById('identity-select');
+  identitySelect.innerHTML = config.personnel.map(p=>`<option>${escapeHtml(p)}</option>`).join('') + '<option value="__other__">Others...</option>';
+  document.getElementById('enter-btn').style.display = 'none';
+  document.getElementById('pw-input').closest('.field').style.display = 'none';
+  document.getElementById('identity-step').style.display = 'block';
+}
+
+function toggleIdentityOther(){
+  const sel = document.getElementById('identity-select');
+  const other = document.getElementById('identity-other');
+  if(sel.value === '__other__'){
+    other.style.display = 'block';
+    other.focus();
+  }else{
+    other.style.display = 'none';
+    other.value = '';
+  }
+}
+
+async function confirmIdentity(){
+  const sel = document.getElementById('identity-select');
+  const name = sel.value === '__other__'
+    ? document.getElementById('identity-other').value.trim()
+    : sel.value;
+  if(!name){
+    showToast("Please enter your name");
+    return;
+  }
+  currentUserName = name;
   document.getElementById('login-screen').style.display='none';
   document.getElementById('main-screen').style.display='flex';
-  if(!isAdmin){
-    document.querySelector('[data-tab="settings"]').style.display='none';
-  }
   await initApp();
 }
 
@@ -526,9 +585,16 @@ function escapeHtml(str){
 
 function logout(){
   isAdmin = false;
+  currentUserName = '';
   document.getElementById('pw-input').value = '';
   document.getElementById('login-error').style.display = 'none';
   document.querySelector('[data-tab="settings"]').style.display = '';
+  document.getElementById('identity-step').style.display = 'none';
+  document.getElementById('identity-select').value = '';
+  document.getElementById('identity-other').value = '';
+  document.getElementById('identity-other').style.display = 'none';
+  document.getElementById('enter-btn').style.display = '';
+  document.getElementById('pw-input').closest('.field').style.display = '';
   switchTabForce('new');
   document.getElementById('main-screen').style.display = 'none';
   document.getElementById('login-screen').style.display = 'flex';
@@ -638,7 +704,7 @@ function renderTable(){
     <table>
       <thead>
         <tr>
-          <th>Date</th><th>Venue</th><th>Category</th><th>Reported By</th><th>Remarks</th><th>Status</th>${isAdmin ? '<th></th>' : ''}
+          <th>Date</th><th>Venue</th><th>Category</th><th>Reported By</th><th>Remarks</th><th>Status</th>${canDelete() ? '<th></th>' : ''}
         </tr>
       </thead>
       <tbody>
@@ -657,7 +723,7 @@ function renderTable(){
                 <option ${r.status==='Resolved'?'selected':''}>Resolved</option>
               </select>
             </td>
-            ${isAdmin ? `<td><button class="btn-danger" onclick="deleteReport('${r.id}')">Delete</button></td>` : ''}
+            ${canDelete() ? `<td><button class="btn-danger" onclick="deleteReport('${r.id}')">Delete</button></td>` : ''}
           </tr>
         `).join('')}
       </tbody>
@@ -683,7 +749,7 @@ async function updateStatus(id, newStatus){
 }
 
 async function deleteReport(id){
-  if(!isAdmin) return;
+  if(!canDelete()) return;
   if(!confirm("Delete this report? This cannot be undone.")) return;
   const backup = reports.slice();
   reports = reports.filter(r=>r.id!==id);
@@ -761,6 +827,20 @@ function renderSettingsLists(){
       <button class="btn-danger" onclick="removeStaffPassword(${i})">Remove</button>
     </div>
   `).join('') : `<div style="color:var(--text-muted); font-size:13px;">No staff passwords set.</div>`;
+
+  const deletePermList = document.getElementById('deletepermission-list');
+  deletePermList.innerHTML = config.deletePermission.length ? config.deletePermission.map((name,i)=>`
+    <div class="list-item">
+      <span>${escapeHtml(name)}</span>
+      <button class="btn-danger" onclick="removeDeletePermission(${i})">Remove</button>
+    </div>
+  `).join('') : `<div style="color:var(--text-muted); font-size:13px;">Nobody has been granted delete permission.</div>`;
+
+  const deletePermSelect = document.getElementById('new-deletepermission');
+  const availableNames = config.personnel.filter(p => !config.deletePermission.includes(p));
+  deletePermSelect.innerHTML = availableNames.length
+    ? availableNames.map(p=>`<option>${escapeHtml(p)}</option>`).join('')
+    : '<option value="">No available names</option>';
 }
 
 async function saveConfigList(key, value){
@@ -862,6 +942,34 @@ async function removeCategory(i){
     populateDropdowns();
   }catch(e){
     config.categories = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function addDeletePermission(){
+  const select = document.getElementById('new-deletepermission');
+  const name = select.value;
+  if(!name) return;
+  const backup = config.deletePermission.slice();
+  config.deletePermission.push(name);
+  try{
+    await saveConfigList('DeletePermission', config.deletePermission);
+    renderSettingsLists();
+    showToast("Delete permission granted");
+  }catch(e){
+    config.deletePermission = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function removeDeletePermission(i){
+  const backup = config.deletePermission.slice();
+  config.deletePermission.splice(i,1);
+  try{
+    await saveConfigList('DeletePermission', config.deletePermission);
+    renderSettingsLists();
+  }catch(e){
+    config.deletePermission = backup;
     showToast("Couldn't save to the Google Sheet");
   }
 }
