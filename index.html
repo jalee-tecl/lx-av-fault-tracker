@@ -217,6 +217,10 @@
 
   /* ---------- SETTINGS ---------- */
   .list-manager{background:var(--surface-alt); border:1px solid var(--border); border-radius:var(--radius); padding:14px; margin-top:10px;}
+  .photo-thumb-wrap{position:relative; width:64px; height:64px; border-radius:var(--radius); overflow:hidden; border:1px solid var(--border);}
+  .photo-thumb-wrap img{width:100%; height:100%; object-fit:cover; display:block;}
+  .photo-thumb-remove{position:absolute; top:2px; right:2px; background:rgba(13,15,18,0.85); color:var(--red); border:none; border-radius:50%; width:18px; height:18px; font-size:12px; line-height:1; cursor:pointer;}
+  .table-photo-thumb{width:40px; height:40px; object-fit:cover; border-radius:3px; border:1px solid var(--border); cursor:pointer;}
   .list-item{display:flex; justify-content:space-between; align-items:center; padding:8px 4px; border-bottom:1px solid var(--border); font-size:13.5px;}
   .list-item:last-child{border-bottom:none;}
   .add-row{display:flex; gap:8px; margin-top:12px;}
@@ -306,6 +310,11 @@
         <div class="field">
           <label>Remarks</label>
           <textarea id="f-remarks" rows="4" placeholder="Describe the fault: what, where, and any immediate action taken..."></textarea>
+        </div>
+        <div class="field">
+          <label>Photos (optional, up to 5)</label>
+          <input type="file" id="f-photos" accept="image/*" multiple onchange="handlePhotoSelection(event)">
+          <div id="photo-preview-list" style="display:flex; flex-wrap:wrap; gap:8px; margin-top:10px;"></div>
         </div>
         <button class="btn-primary" style="width:auto;" onclick="submitReport()">Submit Report</button>
       </div>
@@ -696,6 +705,76 @@ function toggleOtherReporter(){
   }
 }
 
+const MAX_PHOTOS = 5;
+let selectedPhotos = [];
+
+function resizeImage(file){
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(new Error("Couldn't read file"));
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Couldn't load image"));
+      img.onload = () => {
+        const maxDim = 1280;
+        let w = img.width, h = img.height;
+        if(w > maxDim || h > maxDim){
+          if(w > h){ h = Math.round(h * maxDim / w); w = maxDim; }
+          else { w = Math.round(w * maxDim / h); h = maxDim; }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = w;
+        canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        resolve(canvas.toDataURL('image/jpeg', 0.72));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+async function handlePhotoSelection(event){
+  const files = Array.from(event.target.files || []);
+  event.target.value = '';
+  if(!files.length) return;
+
+  const room = MAX_PHOTOS - selectedPhotos.length;
+  if(room <= 0){
+    showToast(`You can attach up to ${MAX_PHOTOS} photos`);
+    return;
+  }
+  const toProcess = files.slice(0, room);
+  if(files.length > room){
+    showToast(`Only added ${room} more — ${MAX_PHOTOS} photo limit reached`);
+  }
+
+  for(const file of toProcess){
+    try{
+      const dataUrl = await resizeImage(file);
+      selectedPhotos.push({ dataUrl, name: file.name });
+    }catch(e){
+      showToast(`Couldn't process ${file.name}`);
+    }
+  }
+  renderPhotoPreviews();
+}
+
+function removeSelectedPhoto(i){
+  selectedPhotos.splice(i, 1);
+  renderPhotoPreviews();
+}
+
+function renderPhotoPreviews(){
+  const list = document.getElementById('photo-preview-list');
+  list.innerHTML = selectedPhotos.map((p, i) => `
+    <div class="photo-thumb-wrap">
+      <img src="${p.dataUrl}" alt="Photo preview">
+      <button type="button" class="photo-thumb-remove" onclick="removeSelectedPhoto(${i})">&times;</button>
+    </div>
+  `).join('');
+}
+
 async function submitReport(){
   const date = document.getElementById('f-date').value;
   const venue = document.getElementById('f-venue').value;
@@ -715,7 +794,8 @@ async function submitReport(){
     id: Date.now().toString(36) + Math.random().toString(36).slice(2,6),
     date, venue, category, reporter, remarks,
     status: "Open",
-    createdAt: singaporeTimestamp()
+    createdAt: singaporeTimestamp(),
+    photos: selectedPhotos.map(p => p.dataUrl)
   };
 
   try{
@@ -731,9 +811,20 @@ async function submitReport(){
   document.getElementById('f-reporter-other').value = '';
   document.getElementById('f-reporter-other').style.display = 'none';
   document.getElementById('f-reporter').selectedIndex = 0;
+  selectedPhotos = [];
+  renderPhotoPreviews();
   showToast("Fault report submitted");
   switchTab('all');
   renderTable();
+}
+
+function photoThumbsHtml(photoIds){
+  if(!photoIds || !photoIds.length) return '<span style="color:var(--text-muted); font-size:12px;">&mdash;</span>';
+  return `<div style="display:flex; gap:4px; flex-wrap:wrap;">` + photoIds.map(id => `
+    <a href="https://drive.google.com/file/d/${id}/view" target="_blank" rel="noopener">
+      <img class="table-photo-thumb" src="https://drive.google.com/thumbnail?id=${id}&sz=w100" alt="Fault photo" loading="lazy">
+    </a>
+  `).join('') + `</div>`;
 }
 
 function statusClass(status){
@@ -763,7 +854,7 @@ function renderTable(){
     <table>
       <thead>
         <tr>
-          <th>Date</th><th>Venue</th><th>Category</th><th>Reported By</th><th>Remarks</th><th>Status</th>${canDelete() ? '<th></th>' : ''}
+          <th>Date</th><th>Venue</th><th>Category</th><th>Reported By</th><th>Remarks</th><th>Photos</th><th>Status</th>${canDelete() ? '<th></th>' : ''}
         </tr>
       </thead>
       <tbody>
@@ -774,6 +865,7 @@ function renderTable(){
             <td>${escapeHtml(r.category||'')}</td>
             <td>${escapeHtml(r.reporter)}</td>
             <td class="remarks-cell">${escapeHtml(r.remarks)}</td>
+            <td>${photoThumbsHtml(r.photoIds)}</td>
             <td>
               <span class="status-pill ${statusClass(r.status)}"><span class="gel-dot"></span></span>
               <select class="status-select" onchange="updateStatus('${r.id}', this.value)">
@@ -840,12 +932,13 @@ function exportToExcel(){
     Category: r.category || '',
     "Reported By": r.reporter,
     Remarks: r.remarks,
+    Photos: (r.photoIds && r.photoIds.length) ? r.photoIds.map(id => `https://drive.google.com/file/d/${id}/view`).join(', ') : '',
     Status: r.status,
     "Logged At": r.createdAt
   }));
 
   const ws = XLSX.utils.json_to_sheet(data);
-  ws['!cols'] = [{wch:12},{wch:20},{wch:20},{wch:16},{wch:50},{wch:12},{wch:22}];
+  ws['!cols'] = [{wch:12},{wch:20},{wch:20},{wch:16},{wch:50},{wch:40},{wch:12},{wch:22}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Fault Reports");
   const today = new Date().toISOString().slice(0,10);
