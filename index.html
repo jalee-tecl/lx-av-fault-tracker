@@ -315,7 +315,7 @@
             </div>
             <div class="field">
               <label>ELT</label>
-              <input type="text" id="f-elt" placeholder="Enter ELT">
+              <select id="f-elt"></select>
             </div>
           </div>
         </div>
@@ -368,6 +368,15 @@
         <div class="add-row">
           <input type="text" id="new-category" placeholder="Add a category...">
           <button class="btn-ghost btn-small" onclick="addCategory()">Add</button>
+        </div>
+      </div>
+      <div class="card section-gap" style="max-width:640px;">
+        <h2 style="font-size:16px;">ELT Options</h2>
+        <div class="login-sub" style="margin-bottom:16px;">Shown as a dropdown on the Fixture category's ELT field.</div>
+        <div class="list-manager" id="eltoptions-list"></div>
+        <div class="add-row">
+          <input type="text" id="new-eltoption" placeholder="Add an ELT option...">
+          <button class="btn-ghost btn-small" onclick="addELTOption()">Add</button>
         </div>
       </div>
       <div class="card section-gap" style="max-width:640px;">
@@ -499,7 +508,8 @@ function normalizeConfig(raw){
     personnel: raw.Personnel || [],
     categories: raw.Categories || DEFAULT_CATEGORIES,
     deletePermission: raw.DeletePermission || [],
-    notifyEmails: raw.NotifyEmails || []
+    notifyEmails: raw.NotifyEmails || [],
+    eltOptions: raw.ELTOptions || ['EVM']
   };
 }
 
@@ -650,11 +660,13 @@ function populateDropdowns(){
   const venueSel = document.getElementById('f-venue');
   const reporterSel = document.getElementById('f-reporter');
   const categorySel = document.getElementById('f-category');
+  const eltSel = document.getElementById('f-elt');
   const filterVenue = document.getElementById('filter-venue');
   const filterCategory = document.getElementById('filter-category');
   venueSel.innerHTML = config.venues.map(v=>`<option>${escapeHtml(v)}</option>`).join('');
   reporterSel.innerHTML = config.personnel.map(p=>`<option>${escapeHtml(p)}</option>`).join('') + '<option value="__other__">Others...</option>';
   categorySel.innerHTML = config.categories.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
+  eltSel.innerHTML = config.eltOptions.map(o=>`<option>${escapeHtml(o)}</option>`).join('');
   filterVenue.innerHTML = '<option value="">All Venues</option>' + config.venues.map(v=>`<option>${escapeHtml(v)}</option>`).join('');
   filterCategory.innerHTML = '<option value="">All Categories</option>' + config.categories.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
   toggleFixtureFields();
@@ -714,7 +726,7 @@ function toggleFixtureFields(){
   }else{
     wrap.style.display = 'none';
     document.getElementById('f-serial-no').value = '';
-    document.getElementById('f-elt').value = '';
+    document.getElementById('f-elt').selectedIndex = 0;
   }
 }
 
@@ -989,6 +1001,7 @@ function renderSettingsLists(){
   const venueList = document.getElementById('venue-list');
   const personnelList = document.getElementById('personnel-list');
   const categoryList = document.getElementById('category-list');
+  const eltOptionsList = document.getElementById('eltoptions-list');
 
   venueList.innerHTML = config.venues.length ? config.venues.map((v,i)=>`
     <div class="list-item">
@@ -1010,6 +1023,13 @@ function renderSettingsLists(){
       <button class="btn-danger" onclick="removeCategory(${i})">Remove</button>
     </div>
   `).join('') : `<div style="color:var(--text-muted); font-size:13px;">No categories added yet.</div>`;
+
+  eltOptionsList.innerHTML = config.eltOptions.length ? config.eltOptions.map((o,i)=>`
+    <div class="list-item">
+      <span>${escapeHtml(o)}</span>
+      <button class="btn-danger" onclick="removeELTOption(${i})">Remove</button>
+    </div>
+  `).join('') : `<div style="color:var(--text-muted); font-size:13px;">No ELT options added yet.</div>`;
 
   const staffpwList = document.getElementById('staffpw-list');
   staffpwList.innerHTML = config.staffPasswords.length ? config.staffPasswords.map((p,i)=>`
@@ -1141,6 +1161,41 @@ async function removeCategory(i){
     populateDropdowns();
   }catch(e){
     config.categories = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function addELTOption(){
+  const input = document.getElementById('new-eltoption');
+  const val = input.value.trim();
+  if(!val) return;
+  if(config.eltOptions.includes(val)){
+    showToast("That option is already in the list");
+    return;
+  }
+  const backup = config.eltOptions.slice();
+  config.eltOptions.push(val);
+  try{
+    await saveConfigList('ELTOptions', config.eltOptions);
+    input.value = '';
+    renderSettingsLists();
+    populateDropdowns();
+    showToast("ELT option added");
+  }catch(e){
+    config.eltOptions = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function removeELTOption(i){
+  const backup = config.eltOptions.slice();
+  config.eltOptions.splice(i,1);
+  try{
+    await saveConfigList('ELTOptions', config.eltOptions);
+    renderSettingsLists();
+    populateDropdowns();
+  }catch(e){
+    config.eltOptions = backup;
     showToast("Couldn't save to the Google Sheet");
   }
 }
