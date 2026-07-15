@@ -299,12 +299,24 @@
           </div>
           <div class="field">
             <label>Category</label>
-            <select id="f-category"></select>
+            <select id="f-category" onchange="toggleFixtureFields()"></select>
           </div>
           <div class="field">
             <label>Reported By</label>
             <select id="f-reporter" onchange="toggleOtherReporter()"></select>
             <input type="text" id="f-reporter-other" placeholder="Enter your name" style="display:none; margin-top:8px;">
+          </div>
+        </div>
+        <div id="fixture-fields" style="display:none;">
+          <div class="grid-2">
+            <div class="field">
+              <label>Serial No</label>
+              <input type="text" id="f-serial-no" placeholder="Enter serial number">
+            </div>
+            <div class="field">
+              <label>ELT</label>
+              <input type="text" id="f-elt" placeholder="Enter ELT">
+            </div>
           </div>
         </div>
         <div class="field">
@@ -645,6 +657,7 @@ function populateDropdowns(){
   categorySel.innerHTML = config.categories.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
   filterVenue.innerHTML = '<option value="">All Venues</option>' + config.venues.map(v=>`<option>${escapeHtml(v)}</option>`).join('');
   filterCategory.innerHTML = '<option value="">All Categories</option>' + config.categories.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
+  toggleFixtureFields();
 }
 
 function escapeHtml(str){
@@ -691,6 +704,18 @@ function singaporeTimestamp(){
   }).formatToParts(new Date());
   const get = type => parts.find(p => p.type === type).value;
   return `${get('year')}-${get('month')}-${get('day')}T${get('hour')}:${get('minute')}:${get('second')}+08:00`;
+}
+
+function toggleFixtureFields(){
+  const category = document.getElementById('f-category').value;
+  const wrap = document.getElementById('fixture-fields');
+  if(category === 'Fixture'){
+    wrap.style.display = 'block';
+  }else{
+    wrap.style.display = 'none';
+    document.getElementById('f-serial-no').value = '';
+    document.getElementById('f-elt').value = '';
+  }
 }
 
 function toggleOtherReporter(){
@@ -795,7 +820,9 @@ async function submitReport(){
     date, venue, category, reporter, remarks,
     status: "Open",
     createdAt: singaporeTimestamp(),
-    photos: selectedPhotos.map(p => p.dataUrl)
+    photos: selectedPhotos.map(p => p.dataUrl),
+    serialNo: category === 'Fixture' ? document.getElementById('f-serial-no').value.trim() : '',
+    elt: category === 'Fixture' ? document.getElementById('f-elt').value.trim() : ''
   };
 
   try{
@@ -811,11 +838,21 @@ async function submitReport(){
   document.getElementById('f-reporter-other').value = '';
   document.getElementById('f-reporter-other').style.display = 'none';
   document.getElementById('f-reporter').selectedIndex = 0;
+  document.getElementById('f-category').selectedIndex = 0;
+  toggleFixtureFields();
   selectedPhotos = [];
   renderPhotoPreviews();
   showToast("Fault report submitted");
   switchTab('all');
   renderTable();
+}
+
+function fixtureInfoHtml(r){
+  if(!r.serialNo && !r.elt) return '';
+  const parts = [];
+  if(r.serialNo) parts.push(`Serial No: ${escapeHtml(r.serialNo)}`);
+  if(r.elt) parts.push(`ELT: ${escapeHtml(r.elt)}`);
+  return `<div class="meta-mono" style="margin-top:4px; font-size:11px; color:var(--text-muted);">${parts.join(' &middot; ')}</div>`;
 }
 
 function photoThumbsHtml(photoIds){
@@ -864,7 +901,7 @@ function renderTable(){
             <td>${escapeHtml(r.venue)}</td>
             <td>${escapeHtml(r.category||'')}</td>
             <td>${escapeHtml(r.reporter)}</td>
-            <td class="remarks-cell">${escapeHtml(r.remarks)}</td>
+            <td class="remarks-cell">${escapeHtml(r.remarks)}${fixtureInfoHtml(r)}</td>
             <td>${photoThumbsHtml(r.photoIds)}</td>
             <td>
               <span class="status-pill ${statusClass(r.status)}"><span class="gel-dot"></span></span>
@@ -932,13 +969,15 @@ function exportToExcel(){
     Category: r.category || '',
     "Reported By": r.reporter,
     Remarks: r.remarks,
+    "Serial No": r.serialNo || '',
+    ELT: r.elt || '',
     Photos: (r.photoIds && r.photoIds.length) ? r.photoIds.map(id => `https://drive.google.com/file/d/${id}/view`).join(', ') : '',
     Status: r.status,
     "Logged At": r.createdAt
   }));
 
   const ws = XLSX.utils.json_to_sheet(data);
-  ws['!cols'] = [{wch:12},{wch:20},{wch:20},{wch:16},{wch:50},{wch:40},{wch:12},{wch:22}];
+  ws['!cols'] = [{wch:12},{wch:20},{wch:20},{wch:16},{wch:50},{wch:16},{wch:16},{wch:40},{wch:12},{wch:22}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Fault Reports");
   const today = new Date().toISOString().slice(0,10);
