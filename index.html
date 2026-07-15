@@ -373,7 +373,7 @@
       </div>
       <div class="card section-gap" style="max-width:640px;">
         <h2 style="font-size:16px;">ELT Options</h2>
-        <div class="login-sub" style="margin-bottom:16px;">Shown as a dropdown on the Fixture category's ELT field.</div>
+        <div class="login-sub" style="margin-bottom:16px;">Shown as a dropdown on the Equipments category's ELT field.</div>
         <div class="list-manager" id="eltoptions-list"></div>
         <div class="add-row">
           <input type="text" id="new-eltoption" placeholder="Add an ELT option...">
@@ -722,7 +722,7 @@ function singaporeTimestamp(){
 function toggleFixtureFields(){
   const category = document.getElementById('f-category').value;
   const wrap = document.getElementById('fixture-fields');
-  if(category === 'Fixture'){
+  if(category === 'Equipments'){
     wrap.style.display = 'block';
     const eltSel = document.getElementById('f-elt');
     if([...eltSel.options].some(o => o.value === 'ELT')){
@@ -859,8 +859,8 @@ async function submitReport(){
     status: "Open",
     createdAt: singaporeTimestamp(),
     photos: selectedPhotos.map(p => p.dataUrl),
-    serialNo: category === 'Fixture' ? document.getElementById('f-serial-no').value.trim() : '',
-    elt: category === 'Fixture' ? getELTValue() : ''
+    serialNo: category === 'Equipments' ? document.getElementById('f-serial-no').value.trim() : '',
+    elt: category === 'Equipments' ? getELTValue() : ''
   };
 
   try{
