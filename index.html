@@ -457,6 +457,40 @@
   </div>
 </div>
 
+<div id="edit-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:200; align-items:center; justify-content:center; padding:24px; overflow-y:auto;">
+  <div class="patch-card" style="max-width:480px; text-align:left; max-height:90vh; overflow-y:auto;">
+    <div class="eyebrow">Edit Report</div>
+    <div class="login-title" style="font-size:18px;">Update Fault Report</div>
+    <div class="field">
+      <label>Venue</label>
+      <select id="edit-venue"></select>
+    </div>
+    <div class="field">
+      <label>Category</label>
+      <select id="edit-category" onchange="toggleEditFixtureFields()"></select>
+    </div>
+    <div id="edit-fixture-fields" style="display:none;">
+      <div class="grid-2">
+        <div class="field">
+          <label>Serial No</label>
+          <input type="text" id="edit-serial-no" placeholder="Enter serial number">
+        </div>
+        <div class="field">
+          <label>ELT</label>
+          <select id="edit-elt" onchange="toggleEditELTManual()"></select>
+          <input type="text" id="edit-elt-other" placeholder="Enter details" style="display:none; margin-top:8px;">
+        </div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Remarks</label>
+      <textarea id="edit-remarks" rows="4"></textarea>
+    </div>
+    <button class="btn-primary" onclick="saveEditedReport()">Save Changes</button>
+    <button class="btn-ghost" style="width:100%; margin-top:8px;" onclick="closeEditModal()">Cancel</button>
+  </div>
+</div>
+
 <script>
 // ======================================================================
 // PASTE YOUR DEPLOYED GOOGLE APPS SCRIPT WEB APP URL BELOW.
@@ -532,6 +566,10 @@ function canDelete(){
 
 function canEditNotes(){
   return isAdmin || config.notesPermission.includes(currentUserName);
+}
+
+function canEditReport(r){
+  return isAdmin || (currentUserName && r.reporter === currentUserName);
 }
 
 async function loadAll(){
@@ -899,6 +937,18 @@ async function submitReport(){
   renderTable();
 }
 
+function actionsCellHtml(r){
+  const buttons = [];
+  if(canEditReport(r)){
+    buttons.push(`<button class="btn-ghost btn-small" onclick="openEditReport('${r.id}')">Edit</button>`);
+  }
+  if(canDelete()){
+    buttons.push(`<button class="btn-danger" onclick="deleteReport('${r.id}')">Delete</button>`);
+  }
+  if(!buttons.length) return '<span style="color:var(--text-muted); font-size:12px;">&mdash;</span>';
+  return `<div style="display:flex; gap:6px; flex-wrap:wrap;">${buttons.join('')}</div>`;
+}
+
 function fixtureInfoHtml(r){
   if(!r.serialNo && !r.elt) return '';
   const parts = [];
@@ -943,7 +993,7 @@ function renderTable(){
     <table>
       <thead>
         <tr>
-          <th>Date</th><th>Venue</th><th>Category</th><th>Reported By</th><th>Remarks</th><th>Notes by System Specialist</th><th>Photos</th><th>Status</th>${canDelete() ? '<th></th>' : ''}
+          <th>Date</th><th>Venue</th><th>Category</th><th>Reported By</th><th>Remarks</th><th>Notes by System Specialist</th><th>Photos</th><th>Status</th><th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -964,7 +1014,7 @@ function renderTable(){
                 <option ${r.status==='Resolved'?'selected':''}>Resolved</option>
               </select>
             </td>
-            ${canDelete() ? `<td><button class="btn-danger" onclick="deleteReport('${r.id}')">Delete</button></td>` : ''}
+            <td>${actionsCellHtml(r)}</td>
           </tr>
         `).join('')}
       </tbody>
@@ -1010,6 +1060,102 @@ async function updateNotes(id, value){
     r.notes = prev;
     renderTable();
     showToast("Couldn't save the note");
+  }
+}
+
+let editingReportId = null;
+
+function openEditReport(id){
+  const r = reports.find(x => x.id === id);
+  if(!r || !canEditReport(r)) return;
+  editingReportId = id;
+
+  const venueSel = document.getElementById('edit-venue');
+  venueSel.innerHTML = config.venues.map(v=>`<option ${v===r.venue?'selected':''}>${escapeHtml(v)}</option>`).join('');
+
+  const categorySel = document.getElementById('edit-category');
+  categorySel.innerHTML = config.categories.map(c=>`<option ${c===r.category?'selected':''}>${escapeHtml(c)}</option>`).join('');
+
+  document.getElementById('edit-remarks').value = r.remarks || '';
+  document.getElementById('edit-serial-no').value = r.serialNo || '';
+
+  const eltSel = document.getElementById('edit-elt');
+  eltSel.innerHTML = config.eltOptions.map(o=>`<option>${escapeHtml(o)}</option>`).join('');
+  const eltOther = document.getElementById('edit-elt-other');
+  eltOther.value = '';
+  if(r.elt){
+    const baseMatch = config.eltOptions.find(o => r.elt.startsWith(o));
+    if(baseMatch){
+      eltSel.value = baseMatch;
+      eltOther.value = r.elt.slice(baseMatch.length);
+    }
+  }
+
+  toggleEditFixtureFields();
+  document.getElementById('edit-modal-overlay').style.display = 'flex';
+}
+
+function closeEditModal(){
+  editingReportId = null;
+  document.getElementById('edit-modal-overlay').style.display = 'none';
+}
+
+function toggleEditFixtureFields(){
+  const category = document.getElementById('edit-category').value;
+  document.getElementById('edit-fixture-fields').style.display = category === 'Equipments' ? 'block' : 'none';
+  toggleEditELTManual();
+}
+
+function toggleEditELTManual(){
+  const val = document.getElementById('edit-elt').value;
+  const other = document.getElementById('edit-elt-other');
+  other.style.display = (val === 'ELT' || val === 'EVM') ? 'block' : 'none';
+}
+
+function getEditELTValue(){
+  const sel = document.getElementById('edit-elt').value;
+  const other = document.getElementById('edit-elt-other').value.trim();
+  if((sel === 'ELT' || sel === 'EVM') && other){
+    return `${sel}${other}`;
+  }
+  return sel;
+}
+
+async function saveEditedReport(){
+  if(!editingReportId) return;
+  const r = reports.find(x => x.id === editingReportId);
+  if(!r) return;
+
+  const category = document.getElementById('edit-category').value;
+  const remarks = document.getElementById('edit-remarks').value.trim();
+  const venue = document.getElementById('edit-venue').value;
+
+  if(!venue || !remarks){
+    showToast("Venue and Remarks can't be empty");
+    return;
+  }
+
+  const fields = {
+    venue: venue,
+    category: category,
+    remarks: remarks,
+    serialNo: category === 'Equipments' ? document.getElementById('edit-serial-no').value.trim() : '',
+    elt: category === 'Equipments' ? getEditELTValue() : ''
+  };
+
+  const backup = { venue: r.venue, category: r.category, remarks: r.remarks, serialNo: r.serialNo, elt: r.elt };
+  Object.assign(r, fields);
+  renderTable();
+
+  try{
+    const result = await apiPost({ action: 'updateReport', id: editingReportId, fields: fields });
+    if(!result.success) throw new Error(result.error || 'Unknown error');
+    closeEditModal();
+    showToast("Report updated");
+  }catch(e){
+    Object.assign(r, backup);
+    renderTable();
+    showToast("Couldn't save changes");
   }
 }
 
