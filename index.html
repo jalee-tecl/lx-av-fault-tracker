@@ -398,6 +398,15 @@
         </div>
       </div>
       <div class="card section-gap" style="max-width:640px;">
+        <h2 style="font-size:16px;">Notes Permission</h2>
+        <div class="login-sub" style="margin-bottom:16px;">These people can add or edit the "Notes by System Specialist" field in All Reports, even when logged in with a staff password. Everyone can still see the notes.</div>
+        <div class="list-manager" id="notespermission-list"></div>
+        <div class="add-row">
+          <select id="new-notespermission"></select>
+          <button class="btn-ghost btn-small" onclick="addNotesPermission()">Add</button>
+        </div>
+      </div>
+      <div class="card section-gap" style="max-width:640px;">
         <h2 style="font-size:16px;">Email Notifications</h2>
         <div class="login-sub" style="margin-bottom:16px;">Everyone on this list gets an email whenever a new fault is reported. People are added automatically the first time they accept the in-app prompt, or you can add them manually here.</div>
         <div class="list-manager" id="notifyemail-list"></div>
@@ -510,7 +519,8 @@ function normalizeConfig(raw){
     categories: raw.Categories || DEFAULT_CATEGORIES,
     deletePermission: raw.DeletePermission || [],
     notifyEmails: raw.NotifyEmails || [],
-    eltOptions: raw.ELTOptions || ['EVM']
+    eltOptions: raw.ELTOptions || ['EVM'],
+    notesPermission: raw.NotesPermission || []
   };
 }
 
@@ -518,6 +528,10 @@ let currentUserName = '';
 
 function canDelete(){
   return isAdmin || config.deletePermission.includes(currentUserName);
+}
+
+function canEditNotes(){
+  return isAdmin || config.notesPermission.includes(currentUserName);
 }
 
 async function loadAll(){
@@ -929,7 +943,7 @@ function renderTable(){
     <table>
       <thead>
         <tr>
-          <th>Date</th><th>Venue</th><th>Category</th><th>Reported By</th><th>Remarks</th><th>Photos</th><th>Status</th>${canDelete() ? '<th></th>' : ''}
+          <th>Date</th><th>Venue</th><th>Category</th><th>Reported By</th><th>Remarks</th><th>Notes by System Specialist</th><th>Photos</th><th>Status</th>${canDelete() ? '<th></th>' : ''}
         </tr>
       </thead>
       <tbody>
@@ -940,6 +954,7 @@ function renderTable(){
             <td>${escapeHtml(r.category||'')}</td>
             <td>${escapeHtml(r.reporter)}</td>
             <td class="remarks-cell">${escapeHtml(r.remarks)}${fixtureInfoHtml(r)}</td>
+            <td class="remarks-cell">${notesCellHtml(r)}</td>
             <td>${photoThumbsHtml(r.photoIds)}</td>
             <td>
               <span class="status-pill ${statusClass(r.status)}"><span class="gel-dot"></span></span>
@@ -971,6 +986,30 @@ async function updateStatus(id, newStatus){
     r.status = prevStatus;
     renderTable();
     showToast("Couldn't update the Google Sheet");
+  }
+}
+
+function notesCellHtml(r){
+  if(canEditNotes()){
+    return `<input type="text" value="${escapeHtml(r.notes || '')}" placeholder="Add a note..." onblur="updateNotes('${r.id}', this.value)">`;
+  }
+  return r.notes ? escapeHtml(r.notes) : '<span style="color:var(--text-muted); font-size:12px;">&mdash;</span>';
+}
+
+async function updateNotes(id, value){
+  const r = reports.find(r=>r.id===id);
+  if(!r) return;
+  const prev = r.notes || '';
+  if(prev === value) return;
+  r.notes = value;
+  try{
+    const result = await apiPost({ action: 'updateNotes', id: id, notes: value });
+    if(!result.success) throw new Error(result.error || 'Unknown error');
+    showToast("Note saved");
+  }catch(e){
+    r.notes = prev;
+    renderTable();
+    showToast("Couldn't save the note");
   }
 }
 
@@ -1007,6 +1046,7 @@ function exportToExcel(){
     Category: r.category || '',
     "Reported By": r.reporter,
     Remarks: r.remarks,
+    "Notes by System Specialist": r.notes || '',
     "Serial No": r.serialNo || '',
     ELT: r.elt || '',
     Photos: (r.photoIds && r.photoIds.length) ? r.photoIds.map(id => `https://drive.google.com/file/d/${id}/view`).join(', ') : '',
@@ -1015,7 +1055,7 @@ function exportToExcel(){
   }));
 
   const ws = XLSX.utils.json_to_sheet(data);
-  ws['!cols'] = [{wch:12},{wch:20},{wch:20},{wch:16},{wch:50},{wch:16},{wch:16},{wch:40},{wch:12},{wch:22}];
+  ws['!cols'] = [{wch:12},{wch:20},{wch:20},{wch:16},{wch:50},{wch:30},{wch:16},{wch:16},{wch:40},{wch:12},{wch:22}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Fault Reports");
   const today = new Date().toISOString().slice(0,10);
@@ -1077,6 +1117,20 @@ function renderSettingsLists(){
   const availableNames = config.personnel.filter(p => !config.deletePermission.includes(p));
   deletePermSelect.innerHTML = availableNames.length
     ? availableNames.map(p=>`<option>${escapeHtml(p)}</option>`).join('')
+    : '<option value="">No available names</option>';
+
+  const notesPermList = document.getElementById('notespermission-list');
+  notesPermList.innerHTML = config.notesPermission.length ? config.notesPermission.map((name,i)=>`
+    <div class="list-item">
+      <span>${escapeHtml(name)}</span>
+      <button class="btn-danger" onclick="removeNotesPermission(${i})">Remove</button>
+    </div>
+  `).join('') : `<div style="color:var(--text-muted); font-size:13px;">Nobody has been granted notes permission.</div>`;
+
+  const notesPermSelect = document.getElementById('new-notespermission');
+  const availableNamesForNotes = config.personnel.filter(p => !config.notesPermission.includes(p));
+  notesPermSelect.innerHTML = availableNamesForNotes.length
+    ? availableNamesForNotes.map(p=>`<option>${escapeHtml(p)}</option>`).join('')
     : '<option value="">No available names</option>';
 
   const notifyEmailList = document.getElementById('notifyemail-list');
@@ -1250,6 +1304,34 @@ async function removeDeletePermission(i){
     renderSettingsLists();
   }catch(e){
     config.deletePermission = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function addNotesPermission(){
+  const select = document.getElementById('new-notespermission');
+  const name = select.value;
+  if(!name) return;
+  const backup = config.notesPermission.slice();
+  config.notesPermission.push(name);
+  try{
+    await saveConfigList('NotesPermission', config.notesPermission);
+    renderSettingsLists();
+    showToast("Notes permission granted");
+  }catch(e){
+    config.notesPermission = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function removeNotesPermission(i){
+  const backup = config.notesPermission.slice();
+  config.notesPermission.splice(i,1);
+  try{
+    await saveConfigList('NotesPermission', config.notesPermission);
+    renderSettingsLists();
+  }catch(e){
+    config.notesPermission = backup;
     showToast("Couldn't save to the Google Sheet");
   }
 }
