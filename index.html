@@ -315,7 +315,8 @@
             </div>
             <div class="field">
               <label>ELT</label>
-              <select id="f-elt"></select>
+              <select id="f-elt" onchange="toggleELTManual()"></select>
+              <input type="text" id="f-elt-other" placeholder="Enter details" style="display:none; margin-top:8px;">
             </div>
           </div>
         </div>
@@ -723,10 +724,35 @@ function toggleFixtureFields(){
   const wrap = document.getElementById('fixture-fields');
   if(category === 'Fixture'){
     wrap.style.display = 'block';
+    const eltSel = document.getElementById('f-elt');
+    if([...eltSel.options].some(o => o.value === 'ELT')){
+      eltSel.value = 'ELT';
+    }
   }else{
     wrap.style.display = 'none';
     document.getElementById('f-serial-no').value = '';
     document.getElementById('f-elt').selectedIndex = 0;
+  }
+  toggleELTManual();
+}
+
+function getELTValue(){
+  const sel = document.getElementById('f-elt').value;
+  const other = document.getElementById('f-elt-other').value.trim();
+  if((sel === 'ELT' || sel === 'EVM') && other){
+    return `${sel}${other}`;
+  }
+  return sel;
+}
+
+function toggleELTManual(){
+  const val = document.getElementById('f-elt').value;
+  const other = document.getElementById('f-elt-other');
+  if(val === 'ELT' || val === 'EVM'){
+    other.style.display = 'block';
+  }else{
+    other.style.display = 'none';
+    other.value = '';
   }
 }
 
@@ -834,7 +860,7 @@ async function submitReport(){
     createdAt: singaporeTimestamp(),
     photos: selectedPhotos.map(p => p.dataUrl),
     serialNo: category === 'Fixture' ? document.getElementById('f-serial-no').value.trim() : '',
-    elt: category === 'Fixture' ? document.getElementById('f-elt').value.trim() : ''
+    elt: category === 'Fixture' ? getELTValue() : ''
   };
 
   try{
