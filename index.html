@@ -241,7 +241,7 @@
   .photo-thumb-wrap{position:relative; width:64px; height:64px; border-radius:var(--radius); overflow:hidden; border:1px solid var(--border);}
   .photo-thumb-wrap img{width:100%; height:100%; object-fit:cover; display:block;}
   .photo-thumb-remove{position:absolute; top:2px; right:2px; background:rgba(13,15,18,0.85); color:var(--red); border:none; border-radius:50%; width:18px; height:18px; font-size:12px; line-height:1; cursor:pointer;}
-  .table-photo-thumb{width:40px; height:40px; object-fit:cover; border-radius:3px; border:1px solid var(--border); cursor:pointer;}
+  .table-photo-thumb{width:72px; height:72px; object-fit:cover; border-radius:3px; border:1px solid var(--border); cursor:pointer;}
   .list-item{display:flex; justify-content:space-between; align-items:center; padding:8px 4px; border-bottom:1px solid var(--border); font-size:13.5px;}
   .list-item:last-child{border-bottom:none;}
   .add-row{display:flex; gap:8px; margin-top:12px;}
@@ -1036,7 +1036,7 @@ function photoThumbsHtml(photoIds){
   if(!photoIds || !photoIds.length) return '<span style="color:var(--text-muted); font-size:12px;">&mdash;</span>';
   return `<div style="display:flex; gap:4px; flex-wrap:wrap;">` + photoIds.map(id => `
     <a href="https://drive.google.com/file/d/${id}/view" target="_blank" rel="noopener">
-      <img class="table-photo-thumb" src="https://drive.google.com/thumbnail?id=${id}&sz=w100" alt="Fault photo" loading="lazy">
+      <img class="table-photo-thumb" src="https://drive.google.com/thumbnail?id=${id}&sz=w200" alt="Fault photo" loading="lazy">
     </a>
   `).join('') + `</div>`;
 }
