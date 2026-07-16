@@ -329,6 +329,10 @@
           </div>
         </div>
         <div id="fixture-fields" style="display:none;">
+          <div class="field">
+            <label>Select Fixture</label>
+            <select id="f-equipment"></select>
+          </div>
           <div class="grid-2">
             <div class="field">
               <label>Serial No</label>
@@ -399,6 +403,15 @@
         <div class="add-row">
           <input type="text" id="new-eltoption" placeholder="Add an ELT option...">
           <button class="btn-ghost btn-small" onclick="addELTOption()">Add</button>
+        </div>
+      </div>
+      <div class="card section-gap" style="max-width:640px;">
+        <h2 style="font-size:16px;">Select Fixture Options</h2>
+        <div class="login-sub" style="margin-bottom:16px;">Shown as a dropdown on the Equipments category's Select Fixture field.</div>
+        <div class="list-manager" id="equipmentoptions-list"></div>
+        <div class="add-row">
+          <input type="text" id="new-equipmentoption" placeholder="Add an equipment model...">
+          <button class="btn-ghost btn-small" onclick="addEquipmentOption()">Add</button>
         </div>
       </div>
       <div class="card section-gap" style="max-width:640px;">
@@ -500,6 +513,10 @@
       <select id="edit-category" onchange="toggleEditFixtureFields()"></select>
     </div>
     <div id="edit-fixture-fields" style="display:none;">
+      <div class="field">
+        <label>Select Fixture</label>
+        <select id="edit-equipment"></select>
+      </div>
       <div class="grid-2">
         <div class="field">
           <label>Serial No</label>
@@ -598,6 +615,7 @@ function normalizeConfig(raw){
     deletePermission: raw.DeletePermission || [],
     notifyEmails: raw.NotifyEmails || [],
     eltOptions: raw.ELTOptions || ['EVM'],
+    equipmentOptions: raw.EquipmentOptions || [],
     notesPermission: raw.NotesPermission || [],
     notifyPermission: raw.NotifyPermission || []
   };
@@ -763,12 +781,14 @@ function populateDropdowns(){
   const reporterSel = document.getElementById('f-reporter');
   const categorySel = document.getElementById('f-category');
   const eltSel = document.getElementById('f-elt');
+  const equipmentSel = document.getElementById('f-equipment');
   const filterVenue = document.getElementById('filter-venue');
   const filterCategory = document.getElementById('filter-category');
   venueSel.innerHTML = config.venues.map(v=>`<option>${escapeHtml(v)}</option>`).join('');
   reporterSel.innerHTML = config.personnel.map(p=>`<option>${escapeHtml(p)}</option>`).join('') + '<option value="__other__">Others...</option>';
   categorySel.innerHTML = config.categories.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
   eltSel.innerHTML = config.eltOptions.map(o=>`<option>${escapeHtml(o)}</option>`).join('');
+  equipmentSel.innerHTML = config.equipmentOptions.map(o=>`<option>${escapeHtml(o)}</option>`).join('');
   filterVenue.innerHTML = '<option value="">All Venues</option>' + config.venues.map(v=>`<option>${escapeHtml(v)}</option>`).join('');
   filterCategory.innerHTML = '<option value="">All Categories</option>' + config.categories.map(c=>`<option>${escapeHtml(c)}</option>`).join('');
   toggleFixtureFields();
@@ -833,6 +853,7 @@ function toggleFixtureFields(){
     wrap.style.display = 'none';
     document.getElementById('f-serial-no').value = '';
     document.getElementById('f-elt').selectedIndex = 0;
+    document.getElementById('f-equipment').selectedIndex = 0;
   }
   toggleELTManual();
 }
@@ -960,6 +981,7 @@ async function submitReport(){
     status: "Open",
     createdAt: singaporeTimestamp(),
     photos: selectedPhotos.map(p => p.dataUrl),
+    equipment: category === 'Equipments' ? document.getElementById('f-equipment').value : '',
     serialNo: category === 'Equipments' ? document.getElementById('f-serial-no').value.trim() : '',
     elt: category === 'Equipments' ? getELTValue() : ''
   };
@@ -1002,8 +1024,9 @@ function actionsCellHtml(r){
 }
 
 function fixtureInfoHtml(r){
-  if(!r.serialNo && !r.elt) return '';
+  if(!r.equipment && !r.serialNo && !r.elt) return '';
   const parts = [];
+  if(r.equipment) parts.push(`Select Fixture: ${escapeHtml(r.equipment)}`);
   if(r.serialNo) parts.push(`Serial No: ${escapeHtml(r.serialNo)}`);
   if(r.elt) parts.push(`ELT: ${escapeHtml(r.elt)}`);
   return `<div class="meta-mono" style="margin-top:4px; font-size:11px; color:var(--text-muted);">${parts.join(' &middot; ')}</div>`;
@@ -1131,6 +1154,9 @@ function openEditReport(id){
   document.getElementById('edit-remarks').value = r.remarks || '';
   document.getElementById('edit-serial-no').value = r.serialNo || '';
 
+  const equipmentSel = document.getElementById('edit-equipment');
+  equipmentSel.innerHTML = config.equipmentOptions.map(o=>`<option ${o===r.equipment?'selected':''}>${escapeHtml(o)}</option>`).join('');
+
   const eltSel = document.getElementById('edit-elt');
   eltSel.innerHTML = config.eltOptions.map(o=>`<option>${escapeHtml(o)}</option>`).join('');
   const eltOther = document.getElementById('edit-elt-other');
@@ -1191,11 +1217,12 @@ async function saveEditedReport(){
     venue: venue,
     category: category,
     remarks: remarks,
+    equipment: category === 'Equipments' ? document.getElementById('edit-equipment').value : '',
     serialNo: category === 'Equipments' ? document.getElementById('edit-serial-no').value.trim() : '',
     elt: category === 'Equipments' ? getEditELTValue() : ''
   };
 
-  const backup = { venue: r.venue, category: r.category, remarks: r.remarks, serialNo: r.serialNo, elt: r.elt };
+  const backup = { venue: r.venue, category: r.category, remarks: r.remarks, equipment: r.equipment, serialNo: r.serialNo, elt: r.elt };
   Object.assign(r, fields);
   renderTable();
 
@@ -1290,6 +1317,7 @@ function exportToExcel(){
     "Reported By": r.reporter,
     Remarks: r.remarks,
     "Notes by System Specialist": r.notes || '',
+    "Select Fixture": r.equipment || '',
     "Serial No": r.serialNo || '',
     ELT: r.elt || '',
     Photos: (r.photoIds && r.photoIds.length) ? r.photoIds.map(id => `https://drive.google.com/file/d/${id}/view`).join(', ') : '',
@@ -1298,7 +1326,7 @@ function exportToExcel(){
   }));
 
   const ws = XLSX.utils.json_to_sheet(data);
-  ws['!cols'] = [{wch:12},{wch:20},{wch:20},{wch:16},{wch:50},{wch:30},{wch:16},{wch:16},{wch:40},{wch:12},{wch:22}];
+  ws['!cols'] = [{wch:12},{wch:20},{wch:20},{wch:16},{wch:50},{wch:30},{wch:26},{wch:16},{wch:16},{wch:40},{wch:12},{wch:22}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Fault Reports");
   const today = new Date().toISOString().slice(0,10);
@@ -1311,6 +1339,7 @@ function renderSettingsLists(){
   const personnelList = document.getElementById('personnel-list');
   const categoryList = document.getElementById('category-list');
   const eltOptionsList = document.getElementById('eltoptions-list');
+  const equipmentOptionsList = document.getElementById('equipmentoptions-list');
 
   venueList.innerHTML = config.venues.length ? config.venues.map((v,i)=>`
     <div class="list-item">
@@ -1339,6 +1368,13 @@ function renderSettingsLists(){
       <button class="btn-danger" onclick="removeELTOption(${i})">Remove</button>
     </div>
   `).join('') : `<div style="color:var(--text-muted); font-size:13px;">No ELT options added yet.</div>`;
+
+  equipmentOptionsList.innerHTML = config.equipmentOptions.length ? config.equipmentOptions.map((o,i)=>`
+    <div class="list-item">
+      <span>${escapeHtml(o)}</span>
+      <button class="btn-danger" onclick="removeEquipmentOption(${i})">Remove</button>
+    </div>
+  `).join('') : `<div style="color:var(--text-muted); font-size:13px;">No equipment options added yet.</div>`;
 
   const staffpwList = document.getElementById('staffpw-list');
   staffpwList.innerHTML = config.staffPasswords.length ? config.staffPasswords.map((p,i)=>`
@@ -1533,6 +1569,41 @@ async function removeELTOption(i){
     populateDropdowns();
   }catch(e){
     config.eltOptions = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function addEquipmentOption(){
+  const input = document.getElementById('new-equipmentoption');
+  const val = input.value.trim();
+  if(!val) return;
+  if(config.equipmentOptions.includes(val)){
+    showToast("That equipment is already in the list");
+    return;
+  }
+  const backup = config.equipmentOptions.slice();
+  config.equipmentOptions.push(val);
+  try{
+    await saveConfigList('EquipmentOptions', config.equipmentOptions);
+    input.value = '';
+    renderSettingsLists();
+    populateDropdowns();
+    showToast("Equipment added");
+  }catch(e){
+    config.equipmentOptions = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function removeEquipmentOption(i){
+  const backup = config.equipmentOptions.slice();
+  config.equipmentOptions.splice(i,1);
+  try{
+    await saveConfigList('EquipmentOptions', config.equipmentOptions);
+    renderSettingsLists();
+    populateDropdowns();
+  }catch(e){
+    config.equipmentOptions = backup;
     showToast("Couldn't save to the Google Sheet");
   }
 }
