@@ -407,6 +407,15 @@
         </div>
       </div>
       <div class="card section-gap" style="max-width:640px;">
+        <h2 style="font-size:16px;">Notify Permission</h2>
+        <div class="login-sub" style="margin-bottom:16px;">These people can see and use the "Notify" button in All Reports, letting them push an email about a specific report to chosen subscribers.</div>
+        <div class="list-manager" id="notifypermission-list"></div>
+        <div class="add-row">
+          <select id="new-notifypermission"></select>
+          <button class="btn-ghost btn-small" onclick="addNotifyPermission()">Add</button>
+        </div>
+      </div>
+      <div class="card section-gap" style="max-width:640px;">
         <h2 style="font-size:16px;">Email Notifications</h2>
         <div class="login-sub" style="margin-bottom:16px;">Everyone on this list gets an email whenever a new fault is reported. People are added automatically the first time they accept the in-app prompt, or you can add them manually here.</div>
         <div class="list-manager" id="notifyemail-list"></div>
@@ -491,6 +500,20 @@
   </div>
 </div>
 
+<div id="notify-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:200; align-items:center; justify-content:center; padding:24px; overflow-y:auto;">
+  <div class="patch-card" style="max-width:420px; text-align:left; max-height:90vh; overflow-y:auto;">
+    <div class="eyebrow">Push Notification</div>
+    <div class="login-title" style="font-size:18px;">Notify About This Report</div>
+    <div class="login-sub" id="notify-report-summary"></div>
+    <div class="field">
+      <label>Send to</label>
+      <div class="list-manager" id="notify-recipient-list"></div>
+    </div>
+    <button class="btn-primary" onclick="sendPushNotification()">Send Notification</button>
+    <button class="btn-ghost" style="width:100%; margin-top:8px;" onclick="closeNotifyModal()">Cancel</button>
+  </div>
+</div>
+
 <script>
 // ======================================================================
 // PASTE YOUR DEPLOYED GOOGLE APPS SCRIPT WEB APP URL BELOW.
@@ -554,7 +577,8 @@ function normalizeConfig(raw){
     deletePermission: raw.DeletePermission || [],
     notifyEmails: raw.NotifyEmails || [],
     eltOptions: raw.ELTOptions || ['EVM'],
-    notesPermission: raw.NotesPermission || []
+    notesPermission: raw.NotesPermission || [],
+    notifyPermission: raw.NotifyPermission || []
   };
 }
 
@@ -570,6 +594,10 @@ function canEditNotes(){
 
 function canEditReport(r){
   return isAdmin || (currentUserName && r.reporter === currentUserName);
+}
+
+function canPushNotify(){
+  return isAdmin || config.notifyPermission.includes(currentUserName);
 }
 
 async function loadAll(){
@@ -942,6 +970,9 @@ function actionsCellHtml(r){
   if(canEditReport(r)){
     buttons.push(`<button class="btn-ghost btn-small" onclick="openEditReport('${r.id}')">Edit</button>`);
   }
+  if(canPushNotify()){
+    buttons.push(`<button class="btn-ghost btn-small" onclick="openNotifyModal('${r.id}')">Notify</button>`);
+  }
   if(canDelete()){
     buttons.push(`<button class="btn-danger" onclick="deleteReport('${r.id}')">Delete</button>`);
   }
@@ -1159,6 +1190,51 @@ async function saveEditedReport(){
   }
 }
 
+let notifyingReportId = null;
+
+function openNotifyModal(id){
+  const r = reports.find(x => x.id === id);
+  if(!r || !canPushNotify()) return;
+  notifyingReportId = id;
+
+  document.getElementById('notify-report-summary').textContent =
+    `${r.venue} — ${r.category || 'Uncategorized'} (${r.date})`;
+
+  const list = document.getElementById('notify-recipient-list');
+  list.innerHTML = config.notifyEmails.length ? config.notifyEmails.map(email => `
+    <div class="list-item">
+      <label style="display:flex; align-items:center; gap:8px; cursor:pointer; width:100%;">
+        <input type="checkbox" value="${escapeHtml(email)}" class="notify-recipient-checkbox">
+        <span class="meta-mono" style="font-size:12.5px;">${escapeHtml(email)}</span>
+      </label>
+    </div>
+  `).join('') : `<div style="color:var(--text-muted); font-size:13px;">Nobody is subscribed to email notifications yet.</div>`;
+
+  document.getElementById('notify-modal-overlay').style.display = 'flex';
+}
+
+function closeNotifyModal(){
+  notifyingReportId = null;
+  document.getElementById('notify-modal-overlay').style.display = 'none';
+}
+
+async function sendPushNotification(){
+  if(!notifyingReportId) return;
+  const checked = Array.from(document.querySelectorAll('.notify-recipient-checkbox:checked')).map(c => c.value);
+  if(!checked.length){
+    showToast("Select at least one recipient");
+    return;
+  }
+  try{
+    const result = await apiPost({ action: 'pushNotify', id: notifyingReportId, emails: checked });
+    if(!result.success) throw new Error(result.error || 'Unknown error');
+    closeNotifyModal();
+    showToast(`Notification sent to ${checked.length} ${checked.length === 1 ? 'person' : 'people'}`);
+  }catch(e){
+    showToast("Couldn't send the notification");
+  }
+}
+
 async function deleteReport(id){
   if(!canDelete()) return;
   if(!confirm("Delete this report? This cannot be undone.")) return;
@@ -1277,6 +1353,20 @@ function renderSettingsLists(){
   const availableNamesForNotes = config.personnel.filter(p => !config.notesPermission.includes(p));
   notesPermSelect.innerHTML = availableNamesForNotes.length
     ? availableNamesForNotes.map(p=>`<option>${escapeHtml(p)}</option>`).join('')
+    : '<option value="">No available names</option>';
+
+  const notifyPermList = document.getElementById('notifypermission-list');
+  notifyPermList.innerHTML = config.notifyPermission.length ? config.notifyPermission.map((name,i)=>`
+    <div class="list-item">
+      <span>${escapeHtml(name)}</span>
+      <button class="btn-danger" onclick="removeNotifyPermission(${i})">Remove</button>
+    </div>
+  `).join('') : `<div style="color:var(--text-muted); font-size:13px;">Nobody has been granted notify permission.</div>`;
+
+  const notifyPermSelect = document.getElementById('new-notifypermission');
+  const availableNamesForNotify = config.personnel.filter(p => !config.notifyPermission.includes(p));
+  notifyPermSelect.innerHTML = availableNamesForNotify.length
+    ? availableNamesForNotify.map(p=>`<option>${escapeHtml(p)}</option>`).join('')
     : '<option value="">No available names</option>';
 
   const notifyEmailList = document.getElementById('notifyemail-list');
@@ -1478,6 +1568,34 @@ async function removeNotesPermission(i){
     renderSettingsLists();
   }catch(e){
     config.notesPermission = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function addNotifyPermission(){
+  const select = document.getElementById('new-notifypermission');
+  const name = select.value;
+  if(!name) return;
+  const backup = config.notifyPermission.slice();
+  config.notifyPermission.push(name);
+  try{
+    await saveConfigList('NotifyPermission', config.notifyPermission);
+    renderSettingsLists();
+    showToast("Notify permission granted");
+  }catch(e){
+    config.notifyPermission = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function removeNotifyPermission(i){
+  const backup = config.notifyPermission.slice();
+  config.notifyPermission.splice(i,1);
+  try{
+    await saveConfigList('NotifyPermission', config.notifyPermission);
+    renderSettingsLists();
+  }catch(e){
+    config.notifyPermission = backup;
     showToast("Couldn't save to the Google Sheet");
   }
 }
