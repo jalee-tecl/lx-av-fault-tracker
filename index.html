@@ -450,6 +450,15 @@
         </div>
       </div>
       <div class="card section-gap" style="max-width:640px;">
+        <h2 style="font-size:16px;">Document Upload Permission</h2>
+        <div class="login-sub" style="margin-bottom:16px;">These people can see and use the "Upload Doc" button in All Reports, letting them attach a PDF, Word, or Excel file to a report. Everyone can see and download attached documents.</div>
+        <div class="list-manager" id="docpermission-list"></div>
+        <div class="add-row">
+          <select id="new-docpermission"></select>
+          <button class="btn-ghost btn-small" onclick="addDocPermission()">Add</button>
+        </div>
+      </div>
+      <div class="card section-gap" style="max-width:640px;">
         <h2 style="font-size:16px;">Email Notifications</h2>
         <div class="login-sub" style="margin-bottom:16px;">Everyone on this list gets an email whenever a new fault is reported. People are added automatically the first time they accept the in-app prompt, or you can add them manually here.</div>
         <div class="list-manager" id="notifyemail-list"></div>
@@ -552,6 +561,21 @@
   </div>
 </div>
 
+<div id="doc-modal-overlay" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.6); z-index:200; align-items:center; justify-content:center; padding:24px; overflow-y:auto;">
+  <div class="patch-card" style="max-width:420px; text-align:left; max-height:90vh; overflow-y:auto;">
+    <div class="eyebrow">Attach a File</div>
+    <div class="login-title" style="font-size:18px;">Upload Document</div>
+    <div class="login-sub" id="doc-report-summary"></div>
+    <div class="field">
+      <label>PDF, Word, or Excel file</label>
+      <input type="file" id="doc-file-input" accept=".pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet">
+      <div id="doc-file-name" style="margin-top:8px; font-size:12.5px; color:var(--text-muted);"></div>
+    </div>
+    <button class="btn-primary" onclick="submitDocUpload()">Upload</button>
+    <button class="btn-ghost" style="width:100%; margin-top:8px;" onclick="closeDocModal()">Cancel</button>
+  </div>
+</div>
+
 <script>
 // ======================================================================
 // PASTE YOUR DEPLOYED GOOGLE APPS SCRIPT WEB APP URL BELOW.
@@ -617,7 +641,8 @@ function normalizeConfig(raw){
     eltOptions: raw.ELTOptions || ['EVM'],
     equipmentOptions: raw.EquipmentOptions || [],
     notesPermission: raw.NotesPermission || [],
-    notifyPermission: raw.NotifyPermission || []
+    notifyPermission: raw.NotifyPermission || [],
+    docPermission: raw.DocPermission || []
   };
 }
 
@@ -637,6 +662,10 @@ function canEditReport(r){
 
 function canPushNotify(){
   return isAdmin || config.notifyPermission.includes(currentUserName);
+}
+
+function canUploadDoc(){
+  return isAdmin || config.docPermission.includes(currentUserName);
 }
 
 async function loadAll(){
@@ -1041,6 +1070,18 @@ function photoThumbsHtml(photoIds){
   `).join('') + `</div>`;
 }
 
+function documentsCellHtml(r){
+  const docs = r.documents || [];
+  const links = docs.map(d => `
+    <div><a href="https://drive.google.com/file/d/${d.id}/view" target="_blank" rel="noopener" style="color:var(--blue); font-size:12px; word-break:break-word;">${escapeHtml(d.name)}</a></div>
+  `).join('');
+  const uploadBtn = canUploadDoc()
+    ? `<button class="btn-ghost btn-small" style="margin-top:${docs.length ? '6px' : '0'};" onclick="openDocModal('${r.id}')">Upload Doc</button>`
+    : '';
+  if(!docs.length && !uploadBtn) return '<span style="color:var(--text-muted); font-size:12px;">&mdash;</span>';
+  return `<div style="min-width:120px;">${links}${uploadBtn}</div>`;
+}
+
 function statusClass(status){
   if(status==='Open') return 'status-open';
   if(status==='In Progress') return 'status-progress';
@@ -1068,7 +1109,7 @@ function renderTable(){
     <table>
       <thead>
         <tr>
-          <th>Date</th><th>Venue</th><th>Category</th><th>Reported By</th><th>Remarks</th><th>Notes by System Specialist</th><th>Photos</th><th>Status</th><th>Actions</th>
+          <th>Date</th><th>Venue</th><th>Category</th><th>Reported By</th><th>Remarks</th><th>Notes by System Specialist</th><th>Photos</th><th>Documents</th><th>Status</th><th>Actions</th>
         </tr>
       </thead>
       <tbody>
@@ -1081,6 +1122,7 @@ function renderTable(){
             <td class="remarks-cell">${escapeHtml(r.remarks)}${fixtureInfoHtml(r)}</td>
             <td class="remarks-cell">${notesCellHtml(r)}</td>
             <td>${photoThumbsHtml(r.photoIds)}</td>
+            <td>${documentsCellHtml(r)}</td>
             <td>
               <span class="status-pill ${statusClass(r.status)}"><span class="gel-dot"></span></span>
               <select class="status-select" onchange="updateStatus('${r.id}', this.value)">
@@ -1283,6 +1325,83 @@ async function sendPushNotification(){
   }
 }
 
+let uploadingDocReportId = null;
+let selectedDocFile = null;
+
+const ALLOWED_DOC_EXTENSIONS = ['.pdf', '.doc', '.docx', '.xls', '.xlsx'];
+const MAX_DOC_SIZE_BYTES = 10 * 1024 * 1024; // 10MB
+
+function openDocModal(id){
+  const r = reports.find(x => x.id === id);
+  if(!r || !canUploadDoc()) return;
+  uploadingDocReportId = id;
+  selectedDocFile = null;
+  document.getElementById('doc-report-summary').textContent =
+    `${r.venue} — ${r.category || 'Uncategorized'} (${r.date})`;
+  document.getElementById('doc-file-input').value = '';
+  document.getElementById('doc-file-name').textContent = '';
+  document.getElementById('doc-modal-overlay').style.display = 'flex';
+}
+
+function closeDocModal(){
+  uploadingDocReportId = null;
+  selectedDocFile = null;
+  document.getElementById('doc-modal-overlay').style.display = 'none';
+}
+
+document.getElementById('doc-file-input').addEventListener('change', (event) => {
+  const file = event.target.files[0];
+  const nameLabel = document.getElementById('doc-file-name');
+  selectedDocFile = null;
+  if(!file){
+    nameLabel.textContent = '';
+    return;
+  }
+  const lowerName = file.name.toLowerCase();
+  const hasValidExtension = ALLOWED_DOC_EXTENSIONS.some(ext => lowerName.endsWith(ext));
+  if(!hasValidExtension){
+    nameLabel.textContent = 'Only PDF, Word, or Excel files are allowed';
+    event.target.value = '';
+    return;
+  }
+  if(file.size > MAX_DOC_SIZE_BYTES){
+    nameLabel.textContent = 'File is too large (max 10MB)';
+    event.target.value = '';
+    return;
+  }
+  selectedDocFile = file;
+  nameLabel.textContent = file.name;
+});
+
+async function submitDocUpload(){
+  if(!uploadingDocReportId || !selectedDocFile) {
+    showToast("Choose a file first");
+    return;
+  }
+  const file = selectedDocFile;
+
+  const dataUrl = await new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(new Error("Couldn't read file"));
+    reader.readAsDataURL(file);
+  });
+
+  try{
+    const result = await apiPost({ action: 'uploadDoc', id: uploadingDocReportId, doc: { dataUrl, name: file.name } });
+    if(!result.success) throw new Error(result.error || 'Unknown error');
+    const r = reports.find(x => x.id === uploadingDocReportId);
+    if(r && result.document){
+      r.documents = (r.documents || []).concat([result.document]);
+    }
+    closeDocModal();
+    renderTable();
+    showToast("Document uploaded");
+  }catch(e){
+    showToast("Couldn't upload the document");
+  }
+}
+
 async function deleteReport(id){
   if(!canDelete()) return;
   if(!confirm("Delete this report? This cannot be undone.")) return;
@@ -1321,12 +1440,13 @@ function exportToExcel(){
     "Serial No": r.serialNo || '',
     ELT: r.elt || '',
     Photos: (r.photoIds && r.photoIds.length) ? r.photoIds.map(id => `https://drive.google.com/file/d/${id}/view`).join(', ') : '',
+    Documents: (r.documents && r.documents.length) ? r.documents.map(d => `${d.name}: https://drive.google.com/file/d/${d.id}/view`).join(' | ') : '',
     Status: r.status,
     "Logged At": r.createdAt
   }));
 
   const ws = XLSX.utils.json_to_sheet(data);
-  ws['!cols'] = [{wch:12},{wch:20},{wch:20},{wch:16},{wch:50},{wch:30},{wch:26},{wch:16},{wch:16},{wch:40},{wch:12},{wch:22}];
+  ws['!cols'] = [{wch:12},{wch:20},{wch:20},{wch:16},{wch:50},{wch:30},{wch:26},{wch:16},{wch:16},{wch:40},{wch:40},{wch:12},{wch:22}];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "Fault Reports");
   const today = new Date().toISOString().slice(0,10);
@@ -1424,6 +1544,20 @@ function renderSettingsLists(){
   const availableNamesForNotify = config.personnel.filter(p => !config.notifyPermission.includes(p));
   notifyPermSelect.innerHTML = availableNamesForNotify.length
     ? availableNamesForNotify.map(p=>`<option>${escapeHtml(p)}</option>`).join('')
+    : '<option value="">No available names</option>';
+
+  const docPermList = document.getElementById('docpermission-list');
+  docPermList.innerHTML = config.docPermission.length ? config.docPermission.map((name,i)=>`
+    <div class="list-item">
+      <span>${escapeHtml(name)}</span>
+      <button class="btn-danger" onclick="removeDocPermission(${i})">Remove</button>
+    </div>
+  `).join('') : `<div style="color:var(--text-muted); font-size:13px;">Nobody has been granted document upload permission.</div>`;
+
+  const docPermSelect = document.getElementById('new-docpermission');
+  const availableNamesForDoc = config.personnel.filter(p => !config.docPermission.includes(p));
+  docPermSelect.innerHTML = availableNamesForDoc.length
+    ? availableNamesForDoc.map(p=>`<option>${escapeHtml(p)}</option>`).join('')
     : '<option value="">No available names</option>';
 
   const notifyEmailList = document.getElementById('notifyemail-list');
@@ -1688,6 +1822,36 @@ async function removeNotifyPermission(i){
     renderSettingsLists();
   }catch(e){
     config.notifyPermission = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function addDocPermission(){
+  const select = document.getElementById('new-docpermission');
+  const name = select.value;
+  if(!name) return;
+  const backup = config.docPermission.slice();
+  config.docPermission.push(name);
+  try{
+    await saveConfigList('DocPermission', config.docPermission);
+    renderSettingsLists();
+    renderTable();
+    showToast("Document upload permission granted");
+  }catch(e){
+    config.docPermission = backup;
+    showToast("Couldn't save to the Google Sheet");
+  }
+}
+
+async function removeDocPermission(i){
+  const backup = config.docPermission.slice();
+  config.docPermission.splice(i,1);
+  try{
+    await saveConfigList('DocPermission', config.docPermission);
+    renderSettingsLists();
+    renderTable();
+  }catch(e){
+    config.docPermission = backup;
     showToast("Couldn't save to the Google Sheet");
   }
 }
