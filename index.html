@@ -1073,7 +1073,7 @@ function photoThumbsHtml(photoIds){
 function documentsCellHtml(r){
   const docs = r.documents || [];
   const links = docs.map(d => `
-    <div><a href="https://drive.google.com/file/d/${d.id}/view" target="_blank" rel="noopener" style="color:var(--blue); font-size:12px; word-break:break-word;">${escapeHtml(d.name)}</a></div>
+    <div><a href="https://drive.google.com/uc?export=download&id=${d.id}" style="color:var(--blue); font-size:12px; word-break:break-word;">${escapeHtml(d.name)}</a></div>
   `).join('');
   const uploadBtn = canUploadDoc()
     ? `<button class="btn-ghost btn-small" style="margin-top:${docs.length ? '6px' : '0'};" onclick="openDocModal('${r.id}')">Upload Doc</button>`
@@ -1440,7 +1440,7 @@ function exportToExcel(){
     "Serial No": r.serialNo || '',
     ELT: r.elt || '',
     Photos: (r.photoIds && r.photoIds.length) ? r.photoIds.map(id => `https://drive.google.com/file/d/${id}/view`).join(', ') : '',
-    Documents: (r.documents && r.documents.length) ? r.documents.map(d => `${d.name}: https://drive.google.com/file/d/${d.id}/view`).join(' | ') : '',
+    Documents: (r.documents && r.documents.length) ? r.documents.map(d => `${d.name}: https://drive.google.com/uc?export=download&id=${d.id}`).join(' | ') : '',
     Status: r.status,
     "Logged At": r.createdAt
   }));
